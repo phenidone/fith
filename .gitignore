@@ -1,0 +1,5 @@
+# ignore emacs backups
+*~
+
+# object files
+*.o
