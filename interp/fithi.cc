@@ -55,11 +55,15 @@ const Interpreter::Context::machineword_t Interpreter::Context::builtin[Interpre
     &Interpreter::Context::mw_sra,
     &Interpreter::Context::mw_srl,
     &Interpreter::Context::mw_store,
-    &Interpreter::Context::mw_read
+    &Interpreter::Context::mw_read,
+    &Interpreter::Context::mw_tors,
+    &Interpreter::Context::mw_fromrs,
+    &Interpreter::Context::mw_cpfromrs,
+    &Interpreter::Context::mw_rdrop,
 };
 
-Interpreter::Context::Context(size_t _ip, fith_cell *_dstk, fith_cell *_cstk, size_t _dsp, size_t _csp, size_t _dsz, size_t _csz, Interpreter &_interp)
-    : ip(_ip), dsp(_dsp), csp(_csp), state(EX_RUNNING), dstk(_dstk), cstk(_cstk), dsz(_dsz), csz(_csz), interp(_interp)
+Interpreter::Context::Context(size_t _ip, fith_cell *_dstk, fith_cell *_rstk, size_t _dsp, size_t _rsp, size_t _dsz, size_t _rsz, Interpreter &_interp)
+    : ip(_ip), dsp(_dsp), rsp(_rsp), state(EX_RUNNING), dstk(_dstk), rstk(_rstk), dsz(_dsz), rsz(_rsz), interp(_interp)
 {
 }
 
@@ -72,8 +76,9 @@ Interpreter::EXEC_RESULT Interpreter::Context::execute()
         }
         fith_cell ins=interp.bin[ip];
 
+#ifndef NDEBUG
         cerr << ip << ":" << ins << endl;
-
+#endif
         ++ip;
         
         if(ins <= 0){
@@ -90,12 +95,12 @@ Interpreter::EXEC_RESULT Interpreter::Context::execute()
             // word to call
 
             // push return address and jump
-            if(csp >= csz){
-                state=EX_CSTK_OVER;
+            if(rsp >= rsz){
+                state=EX_RSTK_OVER;
                 break;
             }
             
-            cstk[csp++]=ip;
+            rstk[rsp++]=ip;
             ip=ins;
         }
     }
@@ -110,13 +115,13 @@ Interpreter::EXEC_RESULT Interpreter::Context::execute()
 
 void Interpreter::Context::mw_exit()
 {
-    if(csp == 0){
+    if(rsp == 0){
         // returned from top-level function
         state=Interpreter::EX_SUCCESS;
     }
     else{
         // jump back
-        ip=cstk[--csp];
+        ip=rstk[--rsp];
     }
 }
 
@@ -289,13 +294,13 @@ void Interpreter::Context::mw_call()
         (this->*builtin[tgt])();
     }
     else{
-        if(csp >= csz){
-            state=Interpreter::EX_CSTK_OVER;
+        if(rsp >= rsz){
+            state=Interpreter::EX_RSTK_OVER;
             return;
         }
         
         // call = push return, branch
-        cstk[csp++]=ip;  // IP was inc'd before we were called, so this is where to return to
+        rstk[rsp++]=ip;  // IP was inc'd before we were called, so this is where to return to
         ip=tgt;
 
         // we don't validate the target address here, it will get
@@ -557,6 +562,59 @@ void Interpreter::Context::mw_read()
         state=Interpreter::EX_SEGV_DATA;
     }
     dstk[dsp-1]=interp.heap[ptr];
+}
+
+
+void Interpreter::Context::mw_tors()
+{
+    if(dsp < 1){
+        state=Interpreter::EX_DSTK_UNDER;
+        return;
+    }
+    if(rsp >= rsz){
+        state=Interpreter::EX_RSTK_OVER;
+        return;
+    }
+    
+    rstk[rsp++]=dstk[--dsp];
+}
+
+void Interpreter::Context::mw_fromrs()
+{
+    if(rsp < 1){
+        state=Interpreter::EX_RSTK_UNDER;
+        return;
+    }
+    if(dsp >= dsz){
+        state=Interpreter::EX_DSTK_OVER;
+        return;
+    }
+    
+    dstk[dsp++]=rstk[--rsp];
+}
+
+void Interpreter::Context::mw_cpfromrs()
+{
+    if(rsp < 1){
+        state=Interpreter::EX_RSTK_UNDER;
+        return;
+    }
+    if(dsp >= dsz){
+        state=Interpreter::EX_DSTK_OVER;
+        return;
+    }
+    
+    dstk[dsp++]=rstk[rsp-1];
+}
+
+void Interpreter::Context::mw_rdrop()
+{
+    if(rsp < 1){
+        state=Interpreter::EX_RSTK_UNDER;
+        return;
+    }
+    
+    --rsp;
 }
 
 

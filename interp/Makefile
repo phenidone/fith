@@ -1,6 +1,6 @@
 
 INCLUDES = fithi.h
-CPPFLAGS = -W -Wall
+CPPFLAGS = -W -Wall -g
 
 fithi: fithi.o main.o
 	g++ -o $@ $+

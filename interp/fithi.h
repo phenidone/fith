@@ -113,11 +113,6 @@ PICK uses stack-pointer manipulation
 : PICK 1+ 4 * DSP@ + @ ;
 
 add:
-SWAP
-ROT (x y z -- y z x)
-NROT (x y z -- z x y)
-PICK (a0 .. an n -- a0 .. an a0)
-ROLL (a0 .. an n -- a1 .. an a0)
 : OVER (x y -- x y x) SWAP DUP NROT ; ?
 
 : TUCK (x y -- y x y) SWAP OVER ;
@@ -139,8 +134,8 @@ public:
         EX_SUCCESS,         ///< execution completed, i.e. returned
         EX_DSTK_OVER,       ///< data stack overflowed
         EX_DSTK_UNDER,      ///< data stack underflowed
-        EX_CSTK_OVER,       ///< call stack overflowed
-        EX_CSTK_UNDER,      ///< call stack underflowed
+        EX_RSTK_OVER,       ///< return stack overflowed
+        EX_RSTK_UNDER,      ///< return stack underflowed
         EX_SEGV_DATA,       ///< segmentation violation, e.g. ! or @ outside heap bounds
         EX_SEGV_CODE,       ///< execution outside the binary
         EX_BAD_OPCODE,      ///< opcode/instruction not recognised
@@ -200,9 +195,10 @@ public:
         MW_SRL,         ///< right shift logical
         MW_STORE,       ///< ! write to heap
         MW_READ,        ///< @ read from heap
-        MW_TOCS,        ///< >R, move value from data stack to call stack
-        MW_FROMCS,      ///< R>, move value from call stack to data stack
-        MW_CPFROMCS,    ///< R@, copy value from vall stack to data stack
+        MW_TORS,        ///< >R, move value from data stack to return stack
+        MW_FROMRS,      ///< R>, move value from return stack to data stack
+        MW_CPFROMRS,    ///< R@, copy value from return stack to data stack
+        MW_RDROP,       ///< RDROP, drop value from return stack
             
         MW_INTERP_COUNT        ///< number of machine-words defined
     };
@@ -216,13 +212,13 @@ public:
          * Create thread
          * @param _ip offset (cells) of the entry-point (start of called Word) in the binary
          * @param _dstk pointer to the data stack for this thread
-         * @param _cstk pointer to the call stack for this thread
+         * @param _rstk pointer to the return stack for this thread
          * @param _dsp data stack pointer (number of valid cells)
-         * @param _csp call stack pointer (number of valid cells)
+         * @param _rsp return stack pointer (number of valid cells)
          * @param _dsz size of the data stack (cells)
-         * @param _csz size of the call stack (cells)
+         * @param _rsz size of the return stack (cells)
          */
-        Context(std::size_t _ip, fith_cell *_dstk, fith_cell *_cstk, std::size_t _dsp, std::size_t _csp, std::size_t _dsz, std::size_t _csz, Interpreter &_interp);
+        Context(std::size_t _ip, fith_cell *_dstk, fith_cell *_rstk, std::size_t _dsp, std::size_t _rsp, std::size_t _dsz, std::size_t _rsz, Interpreter &_interp);
 
     /**
      * Run the interpreter until the called word returns or something breaks.
@@ -270,6 +266,10 @@ public:
         void mw_srl();
         void mw_store();
         void mw_read();
+        void mw_tors();
+        void mw_fromrs();
+        void mw_cpfromrs();
+        void mw_rdrop();
 
         /// machine words are kept here as member-function pointers
         typedef void (Context::*machineword_t)();
@@ -279,13 +279,13 @@ public:
         
         std::size_t ip;      ///< instruction pointer
         std::size_t dsp;     ///< data stack pointer
-        std::size_t csp;     ///< call stack pointer
+        std::size_t rsp;     ///< return stack pointer
         EXEC_RESULT state;  ///< what we're doing
         
         fith_cell *dstk;
-        fith_cell *cstk;
+        fith_cell *rstk;
         const std::size_t dsz;
-        const std::size_t csz;
+        const std::size_t rsz;
         Interpreter &interp;
     };
 

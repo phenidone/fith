@@ -78,6 +78,6 @@ int main()
     if(res == Interpreter::EX_SUCCESS){
         cout << "result = " << dstk[0] << endl;
     }
-    
+
     return 0;
 }
