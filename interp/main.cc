@@ -25,21 +25,42 @@ void dpush(fith_cell i)
     dstk[dsp++]=i;
 }
 
-
-int main()
+size_t compile_tests()
 {
-    // manually write some code
-    // : PYTHAG+1 DUP * SWAP DUP * + 1 + ;
+    // dummy entry so first func is not at zero and looks like EXIT when called
+    compile(0);
+    
+    // : double 2 * ;
+    size_t dubble=binptr;
+    compile(-Interpreter::MW_LIT);
+    compile(2);
+    compile(-Interpreter::MW_MUL);
+    compile(-Interpreter::MW_EXIT);
+
+    // : quad double double ;
+    size_t quad=binptr;
+    compile(dubble);
+    compile(dubble);
+    compile(-Interpreter::MW_EXIT);
+
+    // : PYTHAG DUP * SWAP DUP * + QUAD ;
+    size_t pythag=binptr;
     compile(-Interpreter::MW_DUP);
     compile(-Interpreter::MW_MUL);
     compile(-Interpreter::MW_SWAP);
     compile(-Interpreter::MW_DUP);
     compile(-Interpreter::MW_MUL);
     compile(-Interpreter::MW_PLUS);
-    compile(-Interpreter::MW_LIT);
-    compile(1);
-    compile(-Interpreter::MW_PLUS);
+    compile(quad);
     compile(-Interpreter::MW_EXIT);
+
+    return pythag;
+}
+
+int main()
+{
+    // manually write some code
+    size_t test=compile_tests();
     
     Interpreter interp(bin, binptr, heap, HEAPSZ);
 
@@ -48,7 +69,7 @@ int main()
     dpush(4);
 
     // create thread
-    Interpreter::Context ctx(0, &dstk[0], &cstk[0], dsp, csp, STKSZ, STKSZ, interp);
+    Interpreter::Context ctx(test, &dstk[0], &cstk[0], dsp, csp, STKSZ, STKSZ, interp);
 
     // run
     Interpreter::EXEC_RESULT res=ctx.execute();

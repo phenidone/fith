@@ -9,29 +9,28 @@
  * In trying to make it safe, we lose:
  * - unrestricted memory read/write instructions
  * - self-modifying code, including callable compiler
- * - program access to the call stack?
  * - STDIN and therefore the ability to read WORDs, therefore
  * - there is no concept of IMMEDIATE/COMPILE mode
  * and we need to add:
- * - special read/write-within-heap instructions
- * - special IO words (for machine control)
+ * - special read/write-within-heap instructions, separate from write-to-code
  * - an explicit Harvard-like data/code separation
- * - an offline compiler to make up for the callable compiler
+ * - an offline compiler, which adds back in most of the missing features
+ *   in order to bootstrap the system.
  *
  * That's an ugly workflow compared to normal Forth, but should result
  * in safer high-level programs that cannot so easily corrupt themselves,
  * and which do not actually need to perform compilation at runtime.
  *
  * The binary that this interpreter executes is distilled from a
- * less-constrained, more-Forth-like compiler system, TBD.  Or it should
+ * less-constrained, more-complete Forth-like system.  Or it should
  * be possible to compile to this target machine from other imperative
  * languages if necessary.
  *
- * The Word size is 32 bits.
+ * The cell-size is 32 bits, and the address granularity is also 32 bits.
  *
  * The structure of each Word, in the executable binary, is just a list
  * of target Words to execute.  Because we don't allow the mixing of
- * machine and forth code (all the machine-code is in this interpreter,
+ * machine and forth code (all the machine-code is in the interpreter,
  * not the loaded binary!):
  * - positive words are offsets into the binary
  * - negative words are the index of built-in machine-code words
@@ -114,7 +113,15 @@ PICK uses stack-pointer manipulation
 : PICK 1+ 4 * DSP@ + @ ;
 
 add:
-SWAP, ROT, NROT, PICK, OVER, TUCK, NIP
+SWAP
+ROT (x y z -- y z x)
+NROT (x y z -- z x y)
+PICK (a0 .. an n -- a0 .. an a0)
+ROLL (a0 .. an n -- a1 .. an a0)
+: OVER (x y -- x y x) SWAP DUP NROT ; ?
+
+: TUCK (x y -- y x y) SWAP OVER ;
+: NIP (x y -- y) SWAP DROP ;
 unsigned comparisons
 
  */
@@ -168,6 +175,7 @@ public:
         MW_MULMOD,      ///< */MOD = per */ and produce both quotient and mod
         MW_JMP,         ///< unconditional jump
         MW_JZ,          ///< conditional (TOS==0) jump
+        MW_CALL,        ///< call the word at TOS, as if *ip == *dsp
         MW_LT,          ///< less than
         MW_GT,          ///< greater than
         MW_LE,          ///< less than or equal
@@ -178,7 +186,11 @@ public:
         MW_DUP,         ///< duplicate
         MW_DUPNZ,       ///< duplicate if non-zero
         MW_DROP,        ///< drop
-        MW_SWAP,
+        MW_SWAP,        ///< swap top items = 1 ROLL
+        MW_ROT,         ///< (x y z -- y z x) = 2 ROLL
+        MW_NROT,        ///< (x y z -- z x y)
+        MW_PICK,        ///< (a0 .. an n -- a0 .. an a0)
+        MW_ROLL,        ///< (a0 .. an n -- a1 .. an a0)
         MW_AND,         ///< bitwise and
         MW_OR,          ///< bitwise or
         MW_XOR,         ///< bitwise xor
@@ -188,6 +200,9 @@ public:
         MW_SRL,         ///< right shift logical
         MW_STORE,       ///< ! write to heap
         MW_READ,        ///< @ read from heap
+        MW_TOCS,        ///< >R, move value from data stack to call stack
+        MW_FROMCS,      ///< R>, move value from call stack to data stack
+        MW_CPFROMCS,    ///< R@, copy value from vall stack to data stack
             
         MW_INTERP_COUNT        ///< number of machine-words defined
     };
@@ -230,6 +245,7 @@ public:
         void mw_mulmod();
         void mw_jmp();
         void mw_jz();
+        void mw_call();
         void mw_lt();
         void mw_gt();
         void mw_le();
@@ -241,6 +257,10 @@ public:
         void mw_dupnz();
         void mw_drop();
         void mw_swap();
+        void mw_rot();
+        void mw_nrot();
+        void mw_pick();
+        void mw_roll();
         void mw_and();
         void mw_or();
         void mw_xor();

@@ -1,6 +1,9 @@
 /** -*- C++ -*- */
 
 #include "fithi.h"
+#include <iostream>
+
+using namespace std;
 
 namespace fith {
 
@@ -28,6 +31,7 @@ const Interpreter::Context::machineword_t Interpreter::Context::builtin[Interpre
     &Interpreter::Context::mw_mulmod,
     &Interpreter::Context::mw_jmp,
     &Interpreter::Context::mw_jz,
+    &Interpreter::Context::mw_call,
     &Interpreter::Context::mw_lt,
     &Interpreter::Context::mw_gt,
     &Interpreter::Context::mw_le,
@@ -39,6 +43,10 @@ const Interpreter::Context::machineword_t Interpreter::Context::builtin[Interpre
     &Interpreter::Context::mw_dupnz,
     &Interpreter::Context::mw_drop,
     &Interpreter::Context::mw_swap,
+    &Interpreter::Context::mw_rot,
+    &Interpreter::Context::mw_nrot,
+    &Interpreter::Context::mw_pick,
+    &Interpreter::Context::mw_roll,
     &Interpreter::Context::mw_and,
     &Interpreter::Context::mw_or,
     &Interpreter::Context::mw_xor,
@@ -53,7 +61,6 @@ const Interpreter::Context::machineword_t Interpreter::Context::builtin[Interpre
 Interpreter::Context::Context(size_t _ip, fith_cell *_dstk, fith_cell *_cstk, size_t _dsp, size_t _csp, size_t _dsz, size_t _csz, Interpreter &_interp)
     : ip(_ip), dsp(_dsp), csp(_csp), state(EX_RUNNING), dstk(_dstk), cstk(_cstk), dsz(_dsz), csz(_csz), interp(_interp)
 {
-    // consider clearing the stacks?
 }
 
 Interpreter::EXEC_RESULT Interpreter::Context::execute()
@@ -65,6 +72,10 @@ Interpreter::EXEC_RESULT Interpreter::Context::execute()
         }
         fith_cell ins=interp.bin[ip];
 
+        cerr << ip << ":" << ins << endl;
+
+        ++ip;
+        
         if(ins <= 0){
             // builtin
             ins=-ins;
@@ -73,9 +84,7 @@ Interpreter::EXEC_RESULT Interpreter::Context::execute()
                 break;
             }
             // do it.
-            ++ip;
-            machineword_t bi=builtin[ins];
-            (this->*bi)();
+            (this->*builtin[ins])();
         }
         else{
             // word to call
@@ -86,7 +95,7 @@ Interpreter::EXEC_RESULT Interpreter::Context::execute()
                 break;
             }
             
-            cstk[csp++]=ip+1;
+            cstk[csp++]=ip;
             ip=ins;
         }
     }
@@ -215,12 +224,12 @@ void Interpreter::Context::mw_muldiv()
 
 void Interpreter::Context::mw_divmod()
 {
-
+    state=Interpreter::EX_BAD_OPCODE;
 }
 
 void Interpreter::Context::mw_mulmod()
 {
-
+    state=Interpreter::EX_BAD_OPCODE;
 }
 
 void Interpreter::Context::mw_jmp()
@@ -260,39 +269,101 @@ void Interpreter::Context::mw_jz()
     }
 }
 
+void Interpreter::Context::mw_call()
+{
+    if(dsp < 1){
+        state=Interpreter::EX_DSTK_UNDER;
+        return;
+    }
+    fith_cell tgt=dstk[--dsp];
+    
+    if(tgt < 0){
+        // builtin word, just run it
+        // gonna be fun if it's MW_CALL :)
+        tgt=-tgt;
+        if(tgt >= Interpreter::MW_INTERP_COUNT){
+            state=Interpreter::EX_BAD_OPCODE;
+            return;
+        }
+        // exec it
+        (this->*builtin[tgt])();
+    }
+    else{
+        if(csp >= csz){
+            state=Interpreter::EX_CSTK_OVER;
+            return;
+        }
+        
+        // call = push return, branch
+        cstk[csp++]=ip;  // IP was inc'd before we were called, so this is where to return to
+        ip=tgt;
+
+        // we don't validate the target address here, it will get
+        // checked before fetch in the next cycle of execute()
+    }
+}
+    
 void Interpreter::Context::mw_lt()
 {
-
+    if(dsp < 2){
+        state=Interpreter::EX_DSTK_UNDER;
+    }
+    --dsp;
+    dstk[dsp-1]=(dstk[dsp-1] < dstk[dsp]) ? 1 : 0;
 }
 
 void Interpreter::Context::mw_gt()
 {
-
+    if(dsp < 2){
+        state=Interpreter::EX_DSTK_UNDER;
+    }
+    --dsp;
+    dstk[dsp-1]=(dstk[dsp-1] > dstk[dsp]) ? 1 : 0;
 }
 
 void Interpreter::Context::mw_le()
 {
-
+    if(dsp < 2){
+        state=Interpreter::EX_DSTK_UNDER;
+    }
+    --dsp;
+    dstk[dsp-1]=(dstk[dsp-1] <= dstk[dsp]) ? 1 : 0;
 }
 
 void Interpreter::Context::mw_ge()
 {
-
+    if(dsp < 2){
+        state=Interpreter::EX_DSTK_UNDER;
+    }
+    --dsp;
+    dstk[dsp-1]=(dstk[dsp-1] >= dstk[dsp]) ? 1 : 0;
 }
 
 void Interpreter::Context::mw_eq()
 {
-
+    if(dsp < 2){
+        state=Interpreter::EX_DSTK_UNDER;
+    }
+    --dsp;
+    dstk[dsp-1]=(dstk[dsp-1] == dstk[dsp]) ? 1 : 0;
 }
 
 void Interpreter::Context::mw_max()
 {
-
+    if(dsp < 2){
+        state=Interpreter::EX_DSTK_UNDER;
+    }
+    --dsp;
+    dstk[dsp-1]=(dstk[dsp-1] > dstk[dsp]) ? dstk[dsp-1] : dstk[dsp];
 }
 
 void Interpreter::Context::mw_min()
 {
-
+    if(dsp < 2){
+        state=Interpreter::EX_DSTK_UNDER;
+    }
+    --dsp;
+    dstk[dsp-1]=(dstk[dsp-1] < dstk[dsp]) ? dstk[dsp-1] : dstk[dsp];
 }
 
 void Interpreter::Context::mw_dup()
@@ -311,7 +382,18 @@ void Interpreter::Context::mw_dup()
 
 void Interpreter::Context::mw_dupnz()
 {
-
+    if(dsp < 1){
+        state=Interpreter::EX_DSTK_UNDER;
+    }
+    else if(dsp >= dsz){
+        state=Interpreter::EX_DSTK_OVER;
+    }
+    else{
+        fith_cell c=dstk[dsp-1];
+        if(c != 0){
+            dstk[dsp++]=c;
+        }
+    }
 }
 
 void Interpreter::Context::mw_drop()
@@ -336,49 +418,145 @@ void Interpreter::Context::mw_swap()
     }
 }
 
+void Interpreter::Context::mw_rot()
+{
+    if(dsp < 3){
+        state=Interpreter::EX_DSTK_UNDER;
+    }
+    else{
+        fith_cell tmp=dstk[dsp-3];
+        dstk[dsp-3]=dstk[dsp-2];
+        dstk[dsp-2]=dstk[dsp-1];
+        dstk[dsp-1]=tmp;
+    }
+}
+void Interpreter::Context::mw_nrot()
+{
+    if(dsp < 3){
+        state=Interpreter::EX_DSTK_UNDER;
+    }
+    else{
+        fith_cell tmp=dstk[dsp-1];
+        dstk[dsp-1]=dstk[dsp-2];
+        dstk[dsp-2]=dstk[dsp-3];
+        dstk[dsp-3]=tmp;
+    }
+}
+void Interpreter::Context::mw_pick()
+{
+    if(dsp < 2 || dstk[dsp-1] < 0 || dsp < size_t(dstk[dsp-1]+2)){
+        state=Interpreter::EX_DSTK_UNDER;
+    }
+    else{
+        dstk[dsp-1]=dstk[dsp-dstk[dsp-1]-2];
+    }
+}
+void Interpreter::Context::mw_roll()
+{
+    if(dsp < 2 || dstk[dsp-1] < 0 || dsp < size_t(dstk[dsp-1]+2)){
+        state=Interpreter::EX_DSTK_UNDER;
+    }
+    else{
+        fith_cell n=dstk[--dsp];
+        fith_cell tmp=dstk[dsp-n-1];
+        for(fith_cell i=n;i>0;--i){
+            dstk[dsp-i-1]=dstk[dsp-i];
+        }
+        dstk[dsp-1]=tmp;
+    }
+}
+
 void Interpreter::Context::mw_and()
 {
-
+    if(dsp < 2){
+        state=Interpreter::EX_DSTK_UNDER;
+    }
+    --dsp;
+    dstk[dsp-1] &= dstk[dsp];
 }
 
 void Interpreter::Context::mw_or()
 {
-
+    if(dsp < 2){
+        state=Interpreter::EX_DSTK_UNDER;
+    }
+    --dsp;
+    dstk[dsp-1] |= dstk[dsp];
 }
 
 void Interpreter::Context::mw_xor()
 {
-
+    if(dsp < 2){
+        state=Interpreter::EX_DSTK_UNDER;
+    }
+    --dsp;
+    dstk[dsp-1] ^= dstk[dsp];
 }
 
 void Interpreter::Context::mw_invert()
 {
-
+    if(dsp < 1){
+        state=Interpreter::EX_DSTK_UNDER;
+    }
+    dstk[dsp-1] = ~dstk[dsp-1];
 }
 
 void Interpreter::Context::mw_sl()
 {
-
+    if(dsp < 2){
+        state=Interpreter::EX_DSTK_UNDER;
+    }
+    --dsp;
+    dstk[dsp-1] <<= dstk[dsp];
 }
 
 void Interpreter::Context::mw_sra()
 {
-
+    if(dsp < 2){
+        state=Interpreter::EX_DSTK_UNDER;
+    }
+    --dsp;
+    dstk[dsp-1] >>= dstk[dsp];
 }
 
 void Interpreter::Context::mw_srl()
 {
-
+    if(dsp < 2){
+        state=Interpreter::EX_DSTK_UNDER;
+    }
+    --dsp;
+    unsigned long c=(unsigned long) dstk[dsp-1];
+    c >>= dstk[dsp];
+    dstk[dsp-1]=(fith_cell) c;
 }
 
+// ( val addr -- )
 void Interpreter::Context::mw_store()
 {
-
+    if(dsp < 2){
+        state=Interpreter::EX_DSTK_UNDER;
+        return;
+    }
+    size_t ptr=(size_t) dstk[dsp-1];
+    if(ptr >= interp.heapsz){
+        state=Interpreter::EX_SEGV_DATA;
+        return;
+    }
+    interp.heap[ptr]=dstk[dsp-2];
+    dsp-=2;
 }
 
 void Interpreter::Context::mw_read()
 {
-
+    if(dsp < 1){
+        state=Interpreter::EX_DSTK_UNDER;
+        return;
+    }
+    size_t ptr=(size_t) dstk[dsp-1];
+    if(ptr >= interp.heapsz){
+        state=Interpreter::EX_SEGV_DATA;
+    }
+    dstk[dsp-1]=interp.heap[ptr];
 }
 
 
