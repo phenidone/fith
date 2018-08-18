@@ -10,74 +10,104 @@ const size_t BINSZ=128;
 const size_t HEAPSZ=128;
 const size_t STKSZ=128;
 fith_cell bin[BINSZ];
-size_t binptr=0;
 fith_cell heap[HEAPSZ];
 fith_cell dstk[STKSZ], cstk[STKSZ];
 size_t dsp=0, csp=0;
-
-void compile(fith_cell i)
-{
-    bin[binptr++]=i;
-}
 
 void dpush(fith_cell i)
 {
     dstk[dsp++]=i;
 }
 
-size_t compile_tests()
+size_t dubble, quad, pythag, quit;
+
+void compile_tests(Interpreter &interp)
 {
-    // dummy entry so first func is not at zero and looks like EXIT when called
-    compile(0);
-    
     // : double 2 * ;
-    size_t dubble=binptr;
-    compile(-Interpreter::MW_LIT);
-    compile(2);
-    compile(-Interpreter::MW_MUL);
-    compile(-Interpreter::MW_EXIT);
+    dubble=interp.here();
+    interp.create("DOUBLE", dubble);
+    interp.compile(-Interpreter::MW_LIT);
+    interp.compile(2);
+    interp.compile(-Interpreter::MW_MUL);
+    interp.compile(-Interpreter::MW_EXIT);
 
     // : quad double double ;
-    size_t quad=binptr;
-    compile(dubble);
-    compile(dubble);
-    compile(-Interpreter::MW_EXIT);
+    quad=interp.here();
+    interp.create("QUAD", quad);
+    interp.compile(dubble);
+    interp.compile(dubble);
+    interp.compile(-Interpreter::MW_EXIT);
 
-    // : PYTHAG DUP * SWAP DUP * + QUAD ;
-    size_t pythag=binptr;
-    compile(-Interpreter::MW_DUP);
-    compile(-Interpreter::MW_MUL);
-    compile(-Interpreter::MW_SWAP);
-    compile(-Interpreter::MW_DUP);
-    compile(-Interpreter::MW_MUL);
-    compile(-Interpreter::MW_PLUS);
-    compile(quad);
-    compile(-Interpreter::MW_EXIT);
+    // : PYTHAG DUP * SWAP DUP * + ;
+    pythag=interp.here();
+    interp.create("PYTHAG", pythag);
+    interp.compile(-Interpreter::MW_DUP);
+    interp.compile(-Interpreter::MW_MUL);
+    interp.compile(-Interpreter::MW_SWAP);
+    interp.compile(-Interpreter::MW_DUP);
+    interp.compile(-Interpreter::MW_MUL);
+    interp.compile(-Interpreter::MW_PLUS);
+    interp.compile(-Interpreter::MW_EXIT);
 
-    return pythag;
+    // : QUIT INTERPRET JMP(-4) ;
+    quit=interp.here();
+    interp.create("QUIT", quit);
+    interp.compile(interp.find("INTERPRET"));
+    interp.compile(-Interpreter::MW_JMP);
+    interp.compile(-1);  // inf loop
+    interp.compile(-Interpreter::MW_EXIT);  // waste
 }
 
 int main()
 {
-    // manually write some code
-    size_t test=compile_tests();
-    
-    Interpreter interp(bin, binptr, heap, HEAPSZ);
+    // create bootstrapped interpreter
+    Interpreter interp(bin, BINSZ, heap, HEAPSZ, cin, cout);
 
-    // put some numbers onna stack
+    // manually write some code
+    compile_tests(interp);
+
+    // put some numbers on the stack
     dpush(3);
     dpush(4);
 
     // create thread
-    Interpreter::Context ctx(test, &dstk[0], &cstk[0], dsp, csp, STKSZ, STKSZ, interp);
+    Interpreter::Context ctx(pythag, &dstk[0], &cstk[0], dsp, csp, STKSZ, STKSZ, interp);
 
-    // run
+    // run!
     Interpreter::EXEC_RESULT res=ctx.execute();
 
-    cout << "exec " << res << endl;
     if(res == Interpreter::EX_SUCCESS){
-        cout << "result = " << dstk[0] << endl;
+        cout << "> " << dstk[0] << endl;
+    }
+    else{
+        cout << "fail " << res << endl;
+        return 0;
     }
 
+    // go again
+    ctx.set_ip(quad);
+    res=ctx.execute();
+
+    if(res == Interpreter::EX_SUCCESS){
+        cout << "> " << dstk[0] << endl;
+    }
+    else{
+        cout << "fail " << res << endl;
+        return 0;
+    }
+
+    // start interpreter
+    ctx.set_ip(quit);
+    res=ctx.execute();
+
+    if(res == Interpreter::EX_SUCCESS){
+        cout << "exited?" << endl;
+    }
+    else{
+        cout << "fail " << res << endl;
+        return 0;
+    }
+
+   
     return 0;
 }

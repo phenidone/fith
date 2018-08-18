@@ -46,82 +46,23 @@
  * at startup and no allocation should be performed during ongoing execution.
  *
  * The coding lacks STL etc because it is intended to be
- * portable to microcontrollers.
+ * portable to microcontrollers, except for the part inside #ifdef FULLFITH
+ *
+ * Strings are represented in the heap as a 1-cell length (number of bytes),
+ * followed by the string data, NUL-terminated.  On the stack, they are passed
+ * as the offset into the heap of the length field.
  *
  * @author william@brodie-tyrrell.org
  */
 
-/*
-Notes from jonesforth
-! store also +! -!
-@ fetch
-STATE immediate or compiling.  Part of the INTERPRET function, i.e REPL
-LATEST ptr to ptr to newest word
-HERE ptr to ptr to next free byte
-S0 ptr to data stack
-BASE io radix
-R0 ptr to return stack
-DOCOL ptr to interp
-F_IMMED (run even in compile mode), F_HIDDEN (find will fail), F_LENMASK (not the flags) various flags of a word
->R and R> transfer data between data/return stacks
-RSP@ RSP! get/set the return-stack pointer via data stack
-RDROP drop from return stack
-DSP@ DSP! get/set data stack pointer to/from data stack!
 
-WORD read a word from STDIN into static buffer, leaves char* and len on stack
-NUMBER parse an int in a buffer, e.g. as returned by WORD
-FIND locate word-header given a word (char* / len) on stack
->CFA convert word-pointer into code-pointer (skip word header)
-DFA skip the DOCOL header
-
-CREATE makes a word-header
-[ ] enter/leave compilation mode
-, COMMA appends to HERE, i.e. appends to a compilation
-
-COLON == WORD CREATE (LIT DOCOL) , LATEST @ HIDDEN ] EXIT
-  gets the word, creates header, appends DOCOL, sets hidden flag, sets compile mode
-
-SEMICOLON == (LIT EXIT) COMMA LATEST @ HIDDEN [ EXIT
-  appends the exit instruction, clears hidden-flag, clears compile mode
-
-IMMEDIATE toggle the immediate bit of the latest word
-HIDDEN toggle the hidden bit of a word pointed to on the stack
-HIDE == WORD FIND HIDDEN EXIT
-
-' TICK push the codeword address of the following word.  Get word address, i.e. obtain function pointer.
-
-BRANCH uses offset following the opcode
-0BRANCH is conditional, also relative.
-
-." LITSTRING pushes char* / len of literal string
-TELL prints a string
-
-QUIT the entry-point.  while(true) { clear return-stack; INTERPRET; }
-INTERPRET the REPL.  Read a word, look it up.  if immed, run it.  check if number (push or LIT ,) etc.
-
-CHAR like WORD but just gets a single-char literal onto the stack
-EXECUTE jmp to address popped from data stack!
-SYSCALL calls to OS
-
-KEY read char
-EMIT print char
-\ comment to EOL
-
-compilation written in FORTH.  Uses ! to write computed offsets into compiled code.
-
-PICK uses stack-pointer manipulation
-: PICK 1+ 4 * DSP@ + @ ;
-
-add:
-: OVER (x y -- x y x) SWAP DUP NROT ; ?
-
-: TUCK (x y -- y x y) SWAP OVER ;
-: NIP (x y -- y) SWAP DROP ;
-unsigned comparisons
-
- */
 
 #include <cstring>
+#ifdef FULLFITH
+#include <string>
+#include <iostream>
+#include <map>
+#endif
 
 namespace fith {
 
@@ -147,7 +88,9 @@ public:
     };
         
     /**
-     * Create interpreter.
+     * Create baseline, non-interactive, non-compiling interpreter.
+     * Requires that we pass in a ready-to-run binary of fixed size.
+     *
      * @param bin pointer to loaded executable binary
      * @param binsz number of fith_cells in the binary
      * @param heap pointer to a heap space
@@ -155,10 +98,18 @@ public:
      */
     Interpreter(fith_cell *_bin, std::size_t _binsz, fith_cell *_heap, std::size_t _heapsz);
 
+#ifdef FULLFITH
+    /**
+     * Create an interactive interpreter with IO streams and compilation capabilities
+     */
+    Interpreter(fith_cell *_bin, std::size_t _binsz, fith_cell *_heap, std::size_t _heapsz,
+                std::istream &_is, std::ostream &_os);
+#endif
     
     enum {
         MW_EXIT = 0,    ///< exit/ret
         MW_LIT,         ///< literal
+        MW_TICK,        ///< code-literal.  Subject to relocation whereas literals are not.
         MW_PLUS,        ///< integer addition
         MW_MINUS,       ///< integer subtract
         MW_NEG,         ///< integer negate
@@ -199,10 +150,36 @@ public:
         MW_FROMRS,      ///< R>, move value from return stack to data stack
         MW_CPFROMRS,    ///< R@, copy value from return stack to data stack
         MW_RDROP,       ///< RDROP, drop value from return stack
-            
+        MW_HERE,        ///< get ptr (0) to cell that contains offset of first free cell in either space
+        MW_SYSCALL1,    ///< 1-param syscall
+        MW_SYSCALL2,    ///< 2-param syscall
+        MW_SYSCALL3,    ///< 3-param syscall
+#ifdef FULLFITH
+        MW_STORECODE,   ///< write to code area
+        MW_READCODE,    ///< read from code area
+        MW_COMMA,       ///< append to binary
+
+        MW_KEY,         ///< wait and retrieve next keystroke
+        MW_EMIT,        ///< emit one char
+        MW_WORD,        ///< read a word/identifier from input stream
+        MW_NUMBER,      ///< parse a string as a number ( ptr -- results unconverted )
+        MW_DOT,         ///< print TOS as int
+        MW_TELL,        ///< print TOS, assuming string ptr
+
+        MW_CREATE,      ///< create a word definition
+        MW_FIND,        ///< lookup a word in code space, by name
+        MW_IMMEDIATE,   ///< toggle the immediate flag of the latest word definition
+        MW_HIDDEN,      ///< toggle the hidden flag a word definition
+        MW_LBRAC,       ///< left-bracket, enter immediate mode
+        MW_RBRAC,       ///< right-bracket, enter compile mode
+        MW_STATE,       ///< get compiling-state (compiling=true)
+
+        MW_INTERPRET,   ///< interactive shell
+#endif            
         MW_INTERP_COUNT        ///< number of machine-words defined
     };
 
+    
     /**
      * Context of execution of one thread.
      */
@@ -218,18 +195,23 @@ public:
          * @param _dsz size of the data stack (cells)
          * @param _rsz size of the return stack (cells)
          */
-        Context(std::size_t _ip, fith_cell *_dstk, fith_cell *_rstk, std::size_t _dsp, std::size_t _rsp, std::size_t _dsz, std::size_t _rsz, Interpreter &_interp);
+        Context(std::size_t _ip, fith_cell *_dstk, fith_cell *_rstk, std::size_t &_dsp, std::size_t &_rsp, std::size_t _dsz, std::size_t _rsz, Interpreter &_interp);
 
-    /**
-     * Run the interpreter until the called word returns or something breaks.
-     *
-     */
+        /**
+         * Run the interpreter until the called word returns or something breaks.
+         */
         EXEC_RESULT execute();
 
+        /**
+         * Choose a new entry-point.
+         */
+        void set_ip(std::size_t _ip);
+        
     private:
         
         void mw_exit();
         void mw_lit();
+        void mw_tick();
         void mw_plus();
         void mw_minus();
         void mw_neg();
@@ -270,16 +252,41 @@ public:
         void mw_fromrs();
         void mw_cpfromrs();
         void mw_rdrop();
+        void mw_here();
+        void mw_syscall1();
+        void mw_syscall2();
+        void mw_syscall3();
+        
+#ifdef FULLFITH
+        void mw_storecode();
+        void mw_readcode();
+        void mw_comma();
+        void mw_key();
+        void mw_emit();
+        void mw_word();
+        void mw_number();
+        void mw_dot();
+        void mw_tell();
+        void mw_create();
+        void mw_find();
+        void mw_immediate();
+        void mw_hidden();
+        void mw_lbrac();
+        void mw_rbrac();
+        void mw_state();
 
+        void mw_interpret();
+#endif
+        
         /// machine words are kept here as member-function pointers
         typedef void (Context::*machineword_t)();
 
         /// function table 
         static const machineword_t builtin[Interpreter::MW_INTERP_COUNT];
         
-        std::size_t ip;      ///< instruction pointer
-        std::size_t dsp;     ///< data stack pointer
-        std::size_t rsp;     ///< return stack pointer
+        std::size_t ip;     ///< instruction pointer
+        std::size_t &dsp;   ///< data stack pointer
+        std::size_t &rsp;   ///< return stack pointer
         EXEC_RESULT state;  ///< what we're doing
         
         fith_cell *dstk;
@@ -289,11 +296,89 @@ public:
         Interpreter &interp;
     };
 
+#ifdef FULLFITH
+    static const fith_cell WORDSZ=8;  // max 8 cells = 31 chars in the WORD buffer plus NUL
+    /// allocation of heap space
+    enum {
+        HEREAT=0,
+        WORDLENAT,
+        WORDBUFAT,
+        HEAPUSED=WORDBUFAT+WORDSZ
+    };
+
+    /// allocation of binary space/variables
+    enum {
+        HEREATB=0,
+        STATE,
+        BINUSED
+    };
+
+    fith_cell here() const { return bin[HEREAT]; }
+    
+    /**
+     * append a word to the binary
+     */
+    void compile(fith_cell c);
+
+    /**
+     * create a dictionary entry
+     */
+    void create(const std::string &name, fith_cell value);
+
+    /**
+     * lookup a dictionary entry
+     * @return -1 on failure, else the stored word
+     */
+    fith_cell find(const std::string &name) const;
+
+    /**
+     * get name of latest-created word
+     */
+    const std::string &latest() const;
+    
+#endif
 private:
     
+    /// get a C-string from the TOS ptr; NULL if invalid
+    const char *get_string(fith_cell ptr);
+
     fith_cell *bin;
     fith_cell *heap;
     std::size_t binsz, heapsz;
+
+    // first cell of both bin and heap specify how much space is
+    // allocated in each, therefore starts at 1.
+    
+#ifdef FULLFITH
+
+    /**
+     * Manually assemble a bunch of functions that are used to
+     * bootstrap the system: things that are not native code, 
+     * but which need to exist to support the self-hosting compiler.
+     */
+    void bootstrap();
+    
+    typedef std::map<std::string, fith_cell> dict_t;
+    typedef dict_t::iterator di;
+    typedef dict_t::const_iterator dci;
+    
+    std::istream &is;
+    std::ostream &os;
+
+    // we encode flags in the top three bits,
+    // which means we have only 29-bit (*4 byte) = 2GB usable address space.
+    static const fith_cell FLAG_MACHINE=  0x80000000;     // is a machine opcode, via negation
+    static const fith_cell FLAG_IMMED=    0x40000000;     ///< indicates an immediate word
+    static const fith_cell FLAG_HIDE=     0x20000000;     ///< indicates a hidden word
+    static const fith_cell FLAG_ADDR=     0x1FFFFFFF;     ///< mask to obtain address from dict
+    
+    // machine-word (opcode) names
+    static const std::string opcodes[MW_INTERP_COUNT];
+    
+    std::string latestword;
+    dict_t dictionary;
+    bool compilestate;
+#endif
 
 };
 

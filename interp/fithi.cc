@@ -1,25 +1,19 @@
 /** -*- C++ -*- */
 
 #include "fithi.h"
+#ifdef FULLFITH
 #include <iostream>
+#include <cstdlib>
+#endif
 
 using namespace std;
 
 namespace fith {
 
-Interpreter::Interpreter(fith_cell *_bin, size_t _binsz, fith_cell *_heap, size_t _heapsz)
-    : bin(_bin), heap(_heap), binsz(_binsz), heapsz(_heapsz)
-{
-    // clear heap
-    for(size_t i=0;i<heapsz;++i){
-        heap[i]=0;
-    }
-}
-
-
 const Interpreter::Context::machineword_t Interpreter::Context::builtin[Interpreter::MW_INTERP_COUNT]={
     &Interpreter::Context::mw_exit,
     &Interpreter::Context::mw_lit,
+    &Interpreter::Context::mw_tick,
     &Interpreter::Context::mw_plus,    
     &Interpreter::Context::mw_minus,   
     &Interpreter::Context::mw_neg,
@@ -60,15 +54,123 @@ const Interpreter::Context::machineword_t Interpreter::Context::builtin[Interpre
     &Interpreter::Context::mw_fromrs,
     &Interpreter::Context::mw_cpfromrs,
     &Interpreter::Context::mw_rdrop,
+    &Interpreter::Context::mw_here,
+    &Interpreter::Context::mw_syscall1,
+    &Interpreter::Context::mw_syscall2,
+    &Interpreter::Context::mw_syscall3,
+#ifdef FULLFITH
+    &Interpreter::Context::mw_storecode,
+    &Interpreter::Context::mw_readcode,
+    &Interpreter::Context::mw_comma,    
+    &Interpreter::Context::mw_key,
+    &Interpreter::Context::mw_emit,
+    &Interpreter::Context::mw_word,
+    &Interpreter::Context::mw_number,
+    &Interpreter::Context::mw_dot,
+    &Interpreter::Context::mw_tell,
+    &Interpreter::Context::mw_create,
+    &Interpreter::Context::mw_find,
+    &Interpreter::Context::mw_immediate,
+    &Interpreter::Context::mw_hidden,
+    &Interpreter::Context::mw_lbrac,
+    &Interpreter::Context::mw_rbrac,
+    &Interpreter::Context::mw_state,
+    &Interpreter::Context::mw_interpret    
+#endif
 };
 
-Interpreter::Context::Context(size_t _ip, fith_cell *_dstk, fith_cell *_rstk, size_t _dsp, size_t _rsp, size_t _dsz, size_t _rsz, Interpreter &_interp)
+#ifdef FULLFITH
+const string Interpreter::opcodes[MW_INTERP_COUNT]={
+    "EXIT",
+    "LIT",
+    "'",
+    "+",
+    "-",
+    "NEGATE",
+    "*",
+    "/",
+    "MOD",
+    "*/",
+    "/MOD",
+    "*/MOD",
+    "JMP",
+    "JZ",
+    "EXECUTE",
+    "<",
+    ">",
+    "<=",
+    ">=",
+    "=",
+    "MAX",
+    "MIN",
+    "DUP",
+    "?DUP",
+    "DROP",
+    "SWAP",
+    "ROT",
+    "-ROT",
+    "PICK",
+    "ROLL",
+    "&",
+    "|",
+    "^",
+    "~",
+    "<<",
+    "SRA",
+    ">>",
+    "!",
+    "@",
+    ">R",
+    "R>",
+    "R@",
+    "RDROP",
+    "HERE",
+    "SYSCALL1",
+    "SYSCALL2",
+    "SYSCALL3",
+
+    "!C",
+    "@C",
+    ",",
+    "KEY",
+    "EMIT",
+    "WORD",
+    "NUMBER",
+    ".",
+    "TELL",
+    "CREATE",
+    "FIND",
+    "IMMEDIATE",
+    "HIDDEN",
+    "[",
+    "]",
+    "STATE",
+    "INTERPRET"
+};
+#endif
+
+Interpreter::Interpreter(fith_cell *_bin, size_t _binsz, fith_cell *_heap, size_t _heapsz)
+    : bin(_bin), heap(_heap), binsz(_binsz), heapsz(_heapsz)
+#ifdef FULLFITH
+    , is(cin), os(cout)
+#endif
+{
+    // clear heap
+    for(size_t i=0;i<heapsz;++i){
+        heap[i]=0;
+    }
+    compilestate=false;
+}
+
+Interpreter::Context::Context(size_t _ip, fith_cell *_dstk, fith_cell *_rstk, size_t &_dsp, size_t &_rsp, size_t _dsz, size_t _rsz, Interpreter &_interp)
     : ip(_ip), dsp(_dsp), rsp(_rsp), state(EX_RUNNING), dstk(_dstk), rstk(_rstk), dsz(_dsz), rsz(_rsz), interp(_interp)
 {
 }
 
 Interpreter::EXEC_RESULT Interpreter::Context::execute()
 {
+    state=EX_RUNNING;
+    
     while(state == EX_RUNNING){
         if(ip >= interp.binsz){
             state=EX_SEGV_CODE;
@@ -76,9 +178,6 @@ Interpreter::EXEC_RESULT Interpreter::Context::execute()
         }
         fith_cell ins=interp.bin[ip];
 
-#ifndef NDEBUG
-        cerr << ip << ":" << ins << endl;
-#endif
         ++ip;
         
         if(ins <= 0){
@@ -88,24 +187,35 @@ Interpreter::EXEC_RESULT Interpreter::Context::execute()
                 state=EX_BAD_OPCODE;
                 break;
             }
+#ifndef NDEBUG
+            cerr << ip << ":" << opcodes[ins] << endl;
+#endif
             // do it.
             (this->*builtin[ins])();
         }
         else{
             // word to call
+#ifndef NDEBUG
+            cerr << ip << ":" << ins << endl;
+#endif
 
             // push return address and jump
             if(rsp >= rsz){
                 state=EX_RSTK_OVER;
                 break;
             }
-            
+
             rstk[rsp++]=ip;
             ip=ins;
         }
     }
 
     return state;
+}
+
+void Interpreter::Context::set_ip(size_t _ip)
+{
+    ip=_ip;
 }
 
 
@@ -126,6 +236,22 @@ void Interpreter::Context::mw_exit()
 }
 
 void Interpreter::Context::mw_lit()
+{
+    if(dsp >= dsz){
+        // stack overflow
+        state=Interpreter::EX_DSTK_OVER;
+    }
+    else if(ip >= interp.binsz){
+        // opcode trails off the end of the binary
+        state=Interpreter::EX_SEGV_CODE;
+    }
+    else{
+        // push literal
+        dstk[dsp++]=interp.bin[ip++];
+    }
+}
+
+void Interpreter::Context::mw_tick()
 {
     if(dsp >= dsz){
         // stack overflow
@@ -298,7 +424,10 @@ void Interpreter::Context::mw_call()
             state=Interpreter::EX_RSTK_OVER;
             return;
         }
-        
+
+        // clear any flag bits there might be
+        tgt &= FLAG_ADDR;
+
         // call = push return, branch
         rstk[rsp++]=ip;  // IP was inc'd before we were called, so this is where to return to
         ip=tgt;
@@ -616,6 +745,476 @@ void Interpreter::Context::mw_rdrop()
     
     --rsp;
 }
+
+void Interpreter::Context::mw_here()
+{
+    if(dsp >= dsz){
+        state=Interpreter::EX_DSTK_OVER;
+        return;
+    }
+    dstk[dsp++]=0;
+}
+
+void Interpreter::Context::mw_syscall1()
+{
+    if(dsp < 1){
+        state=Interpreter::EX_DSTK_UNDER;
+        return;
+    }
+    dstk[dsp-1]=0;
+}
+
+void Interpreter::Context::mw_syscall2()
+{
+    if(dsp < 2){
+        state=Interpreter::EX_DSTK_UNDER;
+        return;
+    }
+    dsp--;
+    dstk[dsp-1]=0;
+}
+
+void Interpreter::Context::mw_syscall3()
+{
+    if(dsp < 3){
+        state=Interpreter::EX_DSTK_UNDER;
+        return;
+    }
+    dsp-=2;
+    dstk[dsp-1]=0;
+}
+
+
+#ifdef FULLFITH
+
+Interpreter::Interpreter(fith_cell *_bin, size_t _binsz, fith_cell *_heap, size_t _heapsz,
+                         istream &_is, ostream &_os)
+    : bin(_bin), heap(_heap), binsz(_binsz), heapsz(_heapsz), is(_is), os(_os)
+{
+    // clear heap
+    for(size_t i=0;i<heapsz;++i){
+        heap[i]=0;
+    }
+    compilestate=false;
+
+    // first words in each space denote the space consumed so far
+    bin[HEREAT]=1;   // HERE    
+    heap[HEREAT]=HEAPUSED;  // HEREDATA
+    heap[WORDLENAT]=0;
+    
+    latestword="";
+
+    // generate a bunch of builtin functions
+    bootstrap();
+}
+
+void Interpreter::bootstrap()
+{
+    // put all the opcodes in the dict
+    for(int i=0;i<MW_INTERP_COUNT;++i){
+        create(opcodes[i], -i);
+    }
+    
+    // : OVER ( x y -- x y x ) SWAP DUP NROT ;
+    fith_cell over=here();
+    create("OVER", over);
+    compile(-MW_SWAP);
+    compile(-MW_DUP);
+    compile(-MW_NROT);
+    compile(-MW_EXIT);
+
+    // : TUCK ( x y -- y x y ) SWAP OVER ;
+    fith_cell tuck=here();
+    create("TUCK", tuck);
+    compile(-MW_SWAP);
+    compile(over);
+    compile(-MW_EXIT);
+
+    // : NIP ( x y -- y ) SWAP DROP ;
+    fith_cell nip=here();
+    create("NIP", nip);
+    compile(-MW_SWAP);
+    compile(-MW_DROP);
+    compile(-MW_EXIT);
+
+    // : : WORD CREATE (LIT DOCOL) , LATEST @ HIDDEN ] ;
+    fith_cell colon=here();
+    create(":", colon);
+    compile(-MW_WORD);
+    compile(-MW_LIT);
+    compile(HEREAT);
+    compile(-MW_READCODE);  // HERE @
+    compile(-MW_CREATE);
+    // compile(-MW_COMMA);
+    compile(-MW_HIDDEN);
+    compile(-MW_RBRAC);
+    compile(-MW_EXIT);
+    
+    // : ; IMMEDIATE ' EXIT , LATEST @ HIDDEN [ ;
+    fith_cell semicolon=here() | FLAG_IMMED;
+    create(";", semicolon);
+    compile(-MW_TICK);      // compile EXIT
+    compile(-MW_EXIT);
+    compile(-MW_COMMA);
+    compile(-MW_HIDDEN);    // toggle hidden-bit
+    compile(-MW_LBRAC);     // back to immediate mode
+    compile(-MW_EXIT);
+}
+
+void Interpreter::compile(fith_cell c)
+{
+    fith_cell &here=bin[HEREAT];
+    if(size_t(here) >= binsz){
+        // no room, ignore
+        return;
+    }
+
+    bin[here++]=c;
+}
+
+void Interpreter::create(const string &name, fith_cell value)
+{
+#ifndef NDEBUG
+    cerr << name << " = " << value << endl;
+#endif
+    
+    dictionary[name]=value;
+    latestword=name;
+}
+
+fith_cell Interpreter::find(const string &name) const
+{
+    dci i=dictionary.find(name);
+    if(i == dictionary.end()){
+        return -1;
+    }
+
+    return i->second;
+}
+
+const string &Interpreter::latest() const
+{
+    return latestword;
+}
+
+
+
+void Interpreter::Context::mw_storecode()
+{
+    if(dsp < 2){
+        state=Interpreter::EX_DSTK_UNDER;
+        return;
+    }
+    size_t ptr=(size_t) dstk[dsp-1];
+    if(ptr >= interp.binsz){
+        state=Interpreter::EX_SEGV_CODE;
+        return;
+    }
+    interp.bin[ptr]=dstk[dsp-2];
+    dsp-=2;
+}
+
+void Interpreter::Context::mw_readcode()
+{
+    if(dsp < 1){
+        state=Interpreter::EX_DSTK_UNDER;
+        return;
+    }
+    size_t ptr=(size_t) dstk[dsp-1];
+    if(ptr >= interp.binsz){
+        state=Interpreter::EX_SEGV_CODE;
+    }
+    dstk[dsp-1]=interp.bin[ptr];
+}
+
+void Interpreter::Context::mw_comma()
+{
+    if(dsp < 1){
+        state=Interpreter::EX_DSTK_UNDER;
+        return;
+    }
+    fith_cell &here=interp.bin[HEREAT];
+    if(size_t(here) >= interp.binsz){
+        state=Interpreter::EX_SEGV_CODE;
+        return;
+    }
+
+    // clear flags and copy into the binary
+    interp.bin[here++]=dstk[--dsp] & FLAG_ADDR;
+}
+
+void Interpreter::Context::mw_key()
+{
+    if(dsp >= dsz){
+        state=Interpreter::EX_DSTK_OVER;
+        return;
+    }
+
+    char c;
+    interp.is.get(c);  // blocking read 1 char
+    if(!interp.is){
+        // fail, eof, etc
+        c=0;
+    }
+    // push result as int
+    dstk[dsp++]=(fith_cell) c;
+}
+
+void Interpreter::Context::mw_emit()
+{
+    if(dsp < 1){
+        state=Interpreter::EX_DSTK_UNDER;
+        return;
+    }
+    interp.os.put((char)(dstk[--dsp] & 0xFF));
+    
+}
+
+void Interpreter::Context::mw_word()
+{
+    if(dsp >= dsz){
+        state=Interpreter::EX_DSTK_OVER;
+        return;
+    }
+    
+    string str;
+    interp.is >> str; // it's nice to cheat...
+
+    if(!interp.is){
+        // EOF/fail
+        interp.heap[WORDLENAT]=-1;
+        ((char *) &interp.heap[WORDBUFAT])[0]='\0';
+    }
+    else{
+        // truncate
+        size_t len=str.length();
+        if(len > WORDSZ*4-1){
+            len=WORDSZ*4-1;
+            str.resize(len);
+        }
+        // copy length into heap into fixed-size buffer
+        interp.heap[WORDLENAT]=len;
+        // copy string data plus NUL
+        memcpy((char *) &interp.heap[WORDBUFAT], str.c_str(), len+1);
+    }
+
+#ifndef NDEBUG
+    cerr << "word " << str << endl;
+#endif
+    
+    // push ptr
+    dstk[dsp++]=WORDLENAT;
+}
+
+void Interpreter::Context::mw_number()
+{
+    if(dsp < 1){
+        state=Interpreter::EX_DSTK_UNDER;
+        return;
+    }
+    else if(dsp >= dsz){
+        state=Interpreter::EX_DSTK_OVER;
+        return;
+    }
+
+    // get pointer to C-string
+    const char *str=interp.get_string(dstk[dsp-1]);
+    // invalid or empty
+    if(str == NULL || str[0] == '\0'){
+        dstk[dsp-1]=0;  // result
+        dstk[dsp++]=-1; // "number of unconverted chars"
+        return;
+    }
+
+    char *endptr;
+    long res=strtol(str, &endptr, 0);
+    size_t len=strlen(str);
+
+    dstk[dsp-1]=res;
+    dstk[dsp++]=len-(endptr-str);
+}
+
+void Interpreter::Context::mw_dot()
+{
+    if(dsp < 1){
+        state=EX_DSTK_UNDER;
+        return;
+    }
+    interp.os << dstk[--dsp];
+}
+
+void Interpreter::Context::mw_tell()
+{
+    if(dsp < 1){
+        state=EX_DSTK_UNDER;
+        return;
+    }
+    const char *str=interp.get_string(dstk[--dsp]);
+    if(str != NULL){
+        interp.os << str;
+    }
+}
+
+void Interpreter::Context::mw_create()
+{
+    if(dsp < 2){
+        state=Interpreter::EX_DSTK_UNDER;
+        return;
+    }
+
+    fith_cell ptr=dstk[--dsp];
+    const char *str=interp.get_string(dstk[--dsp]);
+    
+    if(str == NULL){
+        state=Interpreter::EX_SEGV_DATA;
+        return;
+    }
+
+    interp.create(str, ptr);
+}
+
+const char *Interpreter::get_string(fith_cell p)
+{
+    size_t ptr=size_t(p);
+    
+    if(ptr >= heapsz){
+        // invalid ptr
+        return NULL;
+    }
+
+    // retrieve string-len
+    size_t len=size_t(heap[ptr]);
+    if(ptr+1+((len+3)>>2) >= heapsz){
+        // invalid length
+        return NULL;
+    }
+    // ptr to data
+    const char *sp=(const char *) &heap[ptr+1];
+    if(sp[len] != '\0'){
+        // no trailing NUL at expected location
+        return NULL;
+    }
+
+    return sp;
+}
+
+void Interpreter::Context::mw_find()
+{
+    if(dsp < 1){
+        state=Interpreter::EX_DSTK_UNDER;
+        return;
+    }
+
+    // pointer to string object
+    const char *p=interp.get_string(dstk[dsp-1]);
+    // valid?
+    if(p == NULL){
+        state=Interpreter::EX_SEGV_DATA;
+        return;
+    }
+
+    // lookup & overwrite TOS
+    dstk[dsp-1]=interp.find(p);
+}
+
+void Interpreter::Context::mw_immediate()
+{
+    di i=interp.dictionary.find(interp.latestword);
+    if(i != interp.dictionary.end()){
+        i->second ^= FLAG_IMMED;
+    }
+}
+
+void Interpreter::Context::mw_hidden()
+{
+    di i=interp.dictionary.find(interp.latestword);
+    if(i != interp.dictionary.end()){
+        i->second ^= FLAG_HIDE;
+    }
+}
+
+void Interpreter::Context::mw_lbrac()
+{
+    interp.compilestate=false;
+}
+
+void Interpreter::Context::mw_rbrac()
+{
+    interp.compilestate=true;
+}
+
+void Interpreter::Context::mw_state()
+{
+    if(dsp >= dsz){
+        state=Interpreter::EX_DSTK_OVER;
+        return;
+    }
+    dstk[dsp++]=interp.compilestate ? 1 : 0;
+}
+
+void Interpreter::Context::mw_interpret()
+{
+    cerr << "compilestate " << interp.compilestate << endl;
+    
+    // get word
+    mw_word();
+    if(interp.heap[WORDLENAT] < 1){
+        --dsp;
+        return; // nothing good
+    }
+    // word ptr is on stack
+
+    // look it up
+    mw_find();
+    cerr << "find: " << dstk[dsp-1] << endl;
+    fith_cell wordptr=dstk[dsp-1];
+    if(wordptr != -1){
+        // got it; ptr to word is on stack
+        if(!interp.compilestate || (wordptr & FLAG_IMMED) != 0){
+            // is immediate or am in immediate mode, so call it
+            cerr << "interp immed word\n";
+            mw_call();
+            return;
+        }
+        else{
+            cerr << "interp compile word\n";
+            // compile it.
+            mw_comma();
+        }
+    }
+    else{
+        // drop the find-failure-flag, replace it with the word-pointer
+        dstk[dsp-1]=WORDLENAT;
+        
+        // not found.  is it a number?
+        mw_number();
+        cerr << "num: " << dstk[dsp-2] << ", " << dstk[dsp-1] << endl;
+        if(dstk[dsp-1] == 0){
+            // parse success. drop the success flag; have pushed number
+            --dsp;
+
+            // compile mode: LIT number
+            if(interp.compilestate){
+                cerr << "interp compile lit\n";
+                interp.compile(-MW_LIT);
+                mw_comma();
+            }
+            else{
+                cerr << "inter immed lit\n";
+            }
+            // else leave the number on the stack
+        }
+        else{
+            // parse failure; whinge
+            dsp-=2;            
+            interp.os << "Unrecognised word " << ((char *) &interp.heap[WORDBUFAT]) << endl;
+            return;
+        }
+    }
+    
+}
+
+#endif
 
 
 };
