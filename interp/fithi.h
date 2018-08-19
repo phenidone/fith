@@ -170,6 +170,8 @@ public:
         MW_STATE,       ///< get compiling-state (compiling=true)
 
         MW_INTERPRET,   ///< interactive shell
+
+        MW_DUMP,        ///< print out a dump of the code space
 #endif            
         MW_INTERP_COUNT        ///< number of machine-words defined
     };
@@ -281,7 +283,11 @@ public:
         void mw_state();
 
         void mw_interpret();
+
+        void mw_dump();
 #endif
+
+        std::string opcode_to_string(fith_cell v);
         
         /// machine words are kept here as member-function pointers
         typedef void (Context::*machineword_t)();
@@ -321,7 +327,6 @@ public:
     /// allocation of binary space/variables
     enum {
         HEREATB=0,
-        STATE,
         BINUSED
     };
 
@@ -343,6 +348,12 @@ public:
      */
     fith_cell find(const std::string &name) const;
 
+    /**
+     * Reverse lookup; get word name from cell value
+     * @todo: not linear time
+     */
+    const char *reverse_find(fith_cell value) const;
+    
     /**
      * get name of latest-created word
      */

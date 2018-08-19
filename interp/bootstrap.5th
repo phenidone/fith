@@ -26,3 +26,24 @@
 : [COMPILE] IMMEDIATE WORD FIND , ;
 
 : RECURSE IMMEDIATE LATEST FIND , ;
+
+: IF IMMEDIATE
+  ' JZ ,
+  HERE @C
+  0 ,
+;
+
+: ENDIF IMMEDIATE
+  DUP
+  HERE @C SWAP - 1 +
+  SWAP !C
+;
+
+: ELSE IMMEDIATE
+  ' JMP ,
+  HERE @C
+  0 ,
+  SWAP DUP
+  HERE @C SWAP - 1 +
+  SWAP !C
+;

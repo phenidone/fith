@@ -3,6 +3,8 @@
 #include "fithi.h"
 #ifdef FULLFITH
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include <cstdlib>
 #endif
 
@@ -77,7 +79,8 @@ const Interpreter::Context::machineword_t Interpreter::Context::builtin[Interpre
     &Interpreter::Context::mw_lbrac,
     &Interpreter::Context::mw_rbrac,
     &Interpreter::Context::mw_state,
-    &Interpreter::Context::mw_interpret    
+    &Interpreter::Context::mw_interpret,
+    &Interpreter::Context::mw_dump
 #endif
 };
 
@@ -149,7 +152,8 @@ const string Interpreter::opcodes[MW_INTERP_COUNT]={
     "[",
     "]",
     "STATE",
-    "INTERPRET"
+    "INTERPRET",
+    "DUMP"
 };
 #endif
 
@@ -828,15 +832,13 @@ void Interpreter::bootstrap()
     dictionary["IMMEDIATE"] |= FLAG_IMMED;
     dictionary["["] |= FLAG_IMMED;
     
-    // : : WORD CREATE (LIT DOCOL , ) LATEST @ HIDDEN ] ;
+    // : : WORD HERE @C CREATE LATEST @ HIDDEN ] ;
     fith_cell colon=here();
     create(":", colon);
     compile(MW_WORD);
-    compile(MW_LIT);
-    compile(HEREAT, false);
-    compile(MW_READCODE);  // HERE @
+    compile(MW_HERE);
+    compile(MW_READCODE);  // HERE @C
     compile(MW_CREATE);
-    // compile(MW_COMMA);
     compile(MW_HIDDEN);
     compile(MW_RBRAC);
     compile(MW_EXIT);
@@ -890,6 +892,19 @@ fith_cell Interpreter::find(const string &name) const
     }
 
     return i->second;
+}
+
+const char *Interpreter::reverse_find(fith_cell value) const
+{
+    value &= ~(FLAG_IMMED | FLAG_HIDE);
+    
+    for(dci i=dictionary.begin();i!=dictionary.end();++i){
+        if(value == (i->second & ~(FLAG_IMMED | FLAG_HIDE))){
+            return i->first.c_str();
+        }
+    }
+
+    return NULL;
 }
 
 const string &Interpreter::latest() const
@@ -1244,6 +1259,71 @@ void Interpreter::Context::mw_interpret()
         }
     }
     
+}
+
+string Interpreter::Context::opcode_to_string(fith_cell v)
+{
+    if((v & FLAG_MACHINE) != 0){
+        v &= FLAG_ADDR;
+        if(v < MW_INTERP_COUNT){
+            return opcodes[v];
+        }
+        else{
+            return "BAD OPCODE";
+        }
+    }
+    else{
+        const char *tgt=interp.reverse_find(v & FLAG_ADDR);
+        if(tgt != NULL){
+            return tgt;
+        }
+        else{
+            ostringstream oss;
+            oss << v << ends;
+            return oss.str();
+        }
+    }
+}
+
+void Interpreter::Context::mw_dump()
+{
+    fith_cell HERE=interp.bin[HEREATB];
+
+    if(HERE < 0 || size_t(HERE) > interp.binsz){
+        cerr << "invalid HERE in dump" << endl;
+        return;
+    }
+    
+    ofstream ofs("bindump.txt", ios::out);
+
+    if(ofs){
+        ofs << "HERE = " << HERE << endl;
+
+        for(fith_cell p=1;p<HERE;++p){
+            const char *label=interp.reverse_find(p);            
+            if(label != NULL){
+                ofs << label << ":" << endl;
+            }
+
+            fith_cell v=interp.bin[p];
+            ofs << "  " << opcode_to_string(v);
+            if((v & FLAG_MACHINE) != 0){
+                v &= FLAG_ADDR;
+                if(v == MW_LIT || v == MW_JMP || v == MW_JZ){
+                    ofs << " " << interp.bin[++p];
+                }
+                else if(v == MW_TICK){
+                    ofs << " " << opcode_to_string(interp.bin[++p]);
+                }
+            }
+            ofs << endl;
+        }
+
+        ofs.close();
+    }
+    else{
+        cerr << "bin dump failed\n";
+    }
 }
 
 #endif
