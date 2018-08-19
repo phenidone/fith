@@ -180,9 +180,9 @@ Interpreter::EXEC_RESULT Interpreter::Context::execute()
 
         ++ip;
         
-        if(ins <= 0){
+        if((ins & FLAG_MACHINE) != 0){
             // builtin
-            ins=-ins;
+            ins &= FLAG_ADDR;
             if(ins >= MW_INTERP_COUNT){
                 state=EX_BAD_OPCODE;
                 break;
@@ -195,6 +195,7 @@ Interpreter::EXEC_RESULT Interpreter::Context::execute()
         }
         else{
             // word to call
+            ins &= FLAG_ADDR;
 #ifndef NDEBUG
             cerr << ip << ":" << ins << endl;
 #endif
@@ -408,10 +409,10 @@ void Interpreter::Context::mw_call()
     }
     fith_cell tgt=dstk[--dsp];
     
-    if(tgt < 0){
+    if((tgt & FLAG_MACHINE) != 0){
         // builtin word, just run it
         // gonna be fun if it's MW_CALL :)
-        tgt=-tgt;
+        tgt &= FLAG_ADDR;
         if(tgt >= Interpreter::MW_INTERP_COUNT){
             state=Interpreter::EX_BAD_OPCODE;
             return;
@@ -761,6 +762,9 @@ void Interpreter::Context::mw_syscall1()
         state=Interpreter::EX_DSTK_UNDER;
         return;
     }
+#ifndef NDEBUG
+    cerr << "syscall1(" << dstk[dsp-1] << ")" << endl;
+#endif
     dstk[dsp-1]=0;
 }
 
@@ -770,6 +774,9 @@ void Interpreter::Context::mw_syscall2()
         state=Interpreter::EX_DSTK_UNDER;
         return;
     }
+#ifndef NDEBUG
+    cerr << "syscall2(" << dstk[dsp-2] << ", " << dstk[dsp-1] << ")" << endl;
+#endif
     dsp--;
     dstk[dsp-1]=0;
 }
@@ -780,6 +787,9 @@ void Interpreter::Context::mw_syscall3()
         state=Interpreter::EX_DSTK_UNDER;
         return;
     }
+#ifndef NDEBUG
+    cerr << "syscall3(" << dstk[dsp-3] << ", " << dstk[dsp-2] << ", " << dstk[dsp-1] << ")" << endl;
+#endif
     dsp-=2;
     dstk[dsp-1]=0;
 }
@@ -812,56 +822,59 @@ void Interpreter::bootstrap()
 {
     // put all the opcodes in the dict
     for(int i=0;i<MW_INTERP_COUNT;++i){
-        create(opcodes[i], -i);
+        create(opcodes[i], i | FLAG_MACHINE);
     }
+    // make some immediate
+    dictionary["IMMEDIATE"] |= FLAG_IMMED;
+    dictionary["["] |= FLAG_IMMED;
     
     // : OVER ( x y -- x y x ) SWAP DUP NROT ;
     fith_cell over=here();
     create("OVER", over);
-    compile(-MW_SWAP);
-    compile(-MW_DUP);
-    compile(-MW_NROT);
-    compile(-MW_EXIT);
+    compile(MW_SWAP);
+    compile(MW_DUP);
+    compile(MW_NROT);
+    compile(MW_EXIT);
 
     // : TUCK ( x y -- y x y ) SWAP OVER ;
     fith_cell tuck=here();
     create("TUCK", tuck);
-    compile(-MW_SWAP);
-    compile(over);
-    compile(-MW_EXIT);
+    compile(MW_SWAP);
+    compile(over, false);
+    compile(MW_EXIT);
 
     // : NIP ( x y -- y ) SWAP DROP ;
     fith_cell nip=here();
     create("NIP", nip);
-    compile(-MW_SWAP);
-    compile(-MW_DROP);
-    compile(-MW_EXIT);
+    compile(MW_SWAP);
+    compile(MW_DROP);
+    compile(MW_EXIT);
 
-    // : : WORD CREATE (LIT DOCOL) , LATEST @ HIDDEN ] ;
+    // : : WORD CREATE (LIT DOCOL , ) LATEST @ HIDDEN ] ;
     fith_cell colon=here();
     create(":", colon);
-    compile(-MW_WORD);
-    compile(-MW_LIT);
-    compile(HEREAT);
-    compile(-MW_READCODE);  // HERE @
-    compile(-MW_CREATE);
-    // compile(-MW_COMMA);
-    compile(-MW_HIDDEN);
-    compile(-MW_RBRAC);
-    compile(-MW_EXIT);
+    compile(MW_WORD);
+    compile(MW_LIT);
+    compile(HEREAT, false);
+    compile(MW_READCODE);  // HERE @
+    compile(MW_CREATE);
+    // compile(MW_COMMA);
+    compile(MW_HIDDEN);
+    compile(MW_RBRAC);
+    compile(MW_EXIT);
     
     // : ; IMMEDIATE ' EXIT , LATEST @ HIDDEN [ ;
     fith_cell semicolon=here() | FLAG_IMMED;
     create(";", semicolon);
-    compile(-MW_TICK);      // compile EXIT
-    compile(-MW_EXIT);
-    compile(-MW_COMMA);
-    compile(-MW_HIDDEN);    // toggle hidden-bit
-    compile(-MW_LBRAC);     // back to immediate mode
-    compile(-MW_EXIT);
+    compile(MW_TICK);      // compile EXIT
+    compile(MW_EXIT);
+    compile(MW_COMMA);
+    compile(MW_HIDDEN);    // toggle hidden-bit
+    compile(MW_LBRAC);     // back to immediate mode
+    compile(MW_EXIT);
 }
 
-void Interpreter::compile(fith_cell c)
+void Interpreter::compile(fith_cell c, bool machine)
 {
     fith_cell &here=bin[HEREAT];
     if(size_t(here) >= binsz){
@@ -869,7 +882,7 @@ void Interpreter::compile(fith_cell c)
         return;
     }
 
-    bin[here++]=c;
+    bin[here++]=c | (machine ? FLAG_MACHINE : 0);
 }
 
 void Interpreter::create(const string &name, fith_cell value)
@@ -939,8 +952,8 @@ void Interpreter::Context::mw_comma()
         return;
     }
 
-    // clear flags and copy into the binary
-    interp.bin[here++]=dstk[--dsp] & FLAG_ADDR;
+    // copy into the binary
+    interp.bin[here++]=dstk[--dsp];
 }
 
 void Interpreter::Context::mw_key()
@@ -1040,7 +1053,7 @@ void Interpreter::Context::mw_dot()
         state=EX_DSTK_UNDER;
         return;
     }
-    interp.os << dstk[--dsp];
+    interp.os << dstk[--dsp] << ' ';
 }
 
 void Interpreter::Context::mw_tell()
@@ -1154,7 +1167,7 @@ void Interpreter::Context::mw_state()
 
 void Interpreter::Context::mw_interpret()
 {
-    cerr << "compilestate " << interp.compilestate << endl;
+    // cerr << "compilestate " << interp.compilestate << endl;
     
     // get word
     mw_word();
@@ -1166,18 +1179,17 @@ void Interpreter::Context::mw_interpret()
 
     // look it up
     mw_find();
-    cerr << "find: " << dstk[dsp-1] << endl;
     fith_cell wordptr=dstk[dsp-1];
     if(wordptr != -1){
         // got it; ptr to word is on stack
         if(!interp.compilestate || (wordptr & FLAG_IMMED) != 0){
             // is immediate or am in immediate mode, so call it
-            cerr << "interp immed word\n";
+            // cerr << "interp immed word\n";
             mw_call();
             return;
         }
         else{
-            cerr << "interp compile word\n";
+            // cerr << "interp compile word\n";
             // compile it.
             mw_comma();
         }
@@ -1188,19 +1200,19 @@ void Interpreter::Context::mw_interpret()
         
         // not found.  is it a number?
         mw_number();
-        cerr << "num: " << dstk[dsp-2] << ", " << dstk[dsp-1] << endl;
+        // cerr << "num: " << dstk[dsp-2] << ", " << dstk[dsp-1] << endl;
         if(dstk[dsp-1] == 0){
             // parse success. drop the success flag; have pushed number
             --dsp;
 
             // compile mode: LIT number
             if(interp.compilestate){
-                cerr << "interp compile lit\n";
-                interp.compile(-MW_LIT);
+                // cerr << "interp compile lit\n";
+                interp.compile(MW_LIT);
                 mw_comma();
             }
             else{
-                cerr << "inter immed lit\n";
+                // cerr << "interp immed lit\n";
             }
             // else leave the number on the stack
         }

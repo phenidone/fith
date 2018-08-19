@@ -26,36 +26,36 @@ void compile_tests(Interpreter &interp)
     // : double 2 * ;
     dubble=interp.here();
     interp.create("DOUBLE", dubble);
-    interp.compile(-Interpreter::MW_LIT);
-    interp.compile(2);
-    interp.compile(-Interpreter::MW_MUL);
-    interp.compile(-Interpreter::MW_EXIT);
+    interp.compile(Interpreter::MW_LIT);
+    interp.compile(2, false);
+    interp.compile(Interpreter::MW_MUL);
+    interp.compile(Interpreter::MW_EXIT);
 
     // : quad double double ;
     quad=interp.here();
     interp.create("QUAD", quad);
-    interp.compile(dubble);
-    interp.compile(dubble);
-    interp.compile(-Interpreter::MW_EXIT);
+    interp.compile(dubble, false);
+    interp.compile(dubble, false);
+    interp.compile(Interpreter::MW_EXIT);
 
     // : PYTHAG DUP * SWAP DUP * + ;
     pythag=interp.here();
     interp.create("PYTHAG", pythag);
-    interp.compile(-Interpreter::MW_DUP);
-    interp.compile(-Interpreter::MW_MUL);
-    interp.compile(-Interpreter::MW_SWAP);
-    interp.compile(-Interpreter::MW_DUP);
-    interp.compile(-Interpreter::MW_MUL);
-    interp.compile(-Interpreter::MW_PLUS);
-    interp.compile(-Interpreter::MW_EXIT);
+    interp.compile(Interpreter::MW_DUP);
+    interp.compile(Interpreter::MW_MUL);
+    interp.compile(Interpreter::MW_SWAP);
+    interp.compile(Interpreter::MW_DUP);
+    interp.compile(Interpreter::MW_MUL);
+    interp.compile(Interpreter::MW_PLUS);
+    interp.compile(Interpreter::MW_EXIT);
 
     // : QUIT INTERPRET JMP(-4) ;
     quit=interp.here();
     interp.create("QUIT", quit);
     interp.compile(interp.find("INTERPRET"));
-    interp.compile(-Interpreter::MW_JMP);
-    interp.compile(-1);  // inf loop
-    interp.compile(-Interpreter::MW_EXIT);  // waste
+    interp.compile(Interpreter::MW_JMP);
+    interp.compile(-1, false);  // inf loop
+    interp.compile(Interpreter::MW_EXIT);  // waste
 }
 
 int main()

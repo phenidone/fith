@@ -32,20 +32,20 @@
  * of target Words to execute.  Because we don't allow the mixing of
  * machine and forth code (all the machine-code is in the interpreter,
  * not the loaded binary!):
- * - positive words are offsets into the binary
- * - negative words are the index of built-in machine-code words
+ * - positive cells are offsets into the binary
+ * - negative cells are machine-words (builtin) with FLAG_MACHINE (MSB) set 
  * - zero is EXIT(-from-word)
  * Because of this coding, there is no need for a DOCOL at the front
  * of each non-machine definition, instead we use a jump-table to branch
  * to the builtins.
  *
- * The program has a persistent heap, but a new pair of data/call stacks
+ * The program has a heap, but a new pair of data/call stacks
  * are initialised for each call/entry into the interpreter.  In typical
  * Forth fashion, the heap is a linear allocation with no credible means
  * of GC.  For long-running programs, the heap content should be initialised
  * at startup and no allocation should be performed during ongoing execution.
  *
- * The coding lacks STL etc because it is intended to be
+ * The coding (unless #define FULLFITH) lacks STL etc because it is intended to be
  * portable to microcontrollers, except for the part inside #ifdef FULLFITH
  *
  * Strings are represented in the heap as a 1-cell length (number of bytes),
@@ -318,7 +318,7 @@ public:
     /**
      * append a word to the binary
      */
-    void compile(fith_cell c);
+    void compile(fith_cell c, bool machine=true);
 
     /**
      * create a dictionary entry
@@ -367,7 +367,7 @@ private:
 
     // we encode flags in the top three bits,
     // which means we have only 29-bit (*4 byte) = 2GB usable address space.
-    static const fith_cell FLAG_MACHINE=  0x80000000;     // is a machine opcode, via negation
+    static const fith_cell FLAG_MACHINE=  0x80000000;     ///< is a machine opcode
     static const fith_cell FLAG_IMMED=    0x40000000;     ///< indicates an immediate word
     static const fith_cell FLAG_HIDE=     0x20000000;     ///< indicates a hidden word
     static const fith_cell FLAG_ADDR=     0x1FFFFFFF;     ///< mask to obtain address from dict
