@@ -65,11 +65,13 @@ const Interpreter::Context::machineword_t Interpreter::Context::builtin[Interpre
     &Interpreter::Context::mw_key,
     &Interpreter::Context::mw_emit,
     &Interpreter::Context::mw_word,
+    &Interpreter::Context::mw_eof,
     &Interpreter::Context::mw_number,
     &Interpreter::Context::mw_dot,
     &Interpreter::Context::mw_tell,
     &Interpreter::Context::mw_create,
     &Interpreter::Context::mw_find,
+    &Interpreter::Context::mw_latest,
     &Interpreter::Context::mw_immediate,
     &Interpreter::Context::mw_hidden,
     &Interpreter::Context::mw_lbrac,
@@ -135,11 +137,13 @@ const string Interpreter::opcodes[MW_INTERP_COUNT]={
     "KEY",
     "EMIT",
     "WORD",
+    "EOF",
     "NUMBER",
     ".",
     "TELL",
     "CREATE",
     "FIND",
+    "LATEST",
     "IMMEDIATE",
     "HIDDEN",
     "[",
@@ -149,21 +153,37 @@ const string Interpreter::opcodes[MW_INTERP_COUNT]={
 };
 #endif
 
-Interpreter::Interpreter(fith_cell *_bin, size_t _binsz, fith_cell *_heap, size_t _heapsz)
+Interpreter::Interpreter(fith_cell *_bin, size_t _binsz, fith_cell *_heap, size_t _heapsz, bool bs)
     : bin(_bin), heap(_heap), binsz(_binsz), heapsz(_heapsz)
-#ifdef FULLFITH
-    , is(cin), os(cout)
-#endif
 {
-    // clear heap
-    for(size_t i=0;i<heapsz;++i){
-        heap[i]=0;
-    }
     compilestate=false;
+
+    // need to initialise?
+    if(bs){
+        // first words in each space denote the space consumed so far
+        bin[HEREAT]=1;   // HERE    
+        heap[HEREAT]=HEAPUSED;  // HEREDATA
+        heap[WORDLENAT]=0;
+        heap[LATESTLENAT]=0;
+    
+        latestword="";
+
+        // generate a bunch of builtin functions
+        bootstrap();
+    }
 }
 
-Interpreter::Context::Context(size_t _ip, fith_cell *_dstk, fith_cell *_rstk, size_t &_dsp, size_t &_rsp, size_t _dsz, size_t _rsz, Interpreter &_interp)
-    : ip(_ip), dsp(_dsp), rsp(_rsp), state(EX_RUNNING), dstk(_dstk), rstk(_rstk), dsz(_dsz), rsz(_rsz), interp(_interp)
+Interpreter::Context::Context(size_t _ip, fith_cell *_dstk, fith_cell *_rstk, size_t &_dsp, size_t &_rsp,
+                              size_t _dsz, size_t _rsz, Interpreter &_interp
+#ifdef FULLFITH
+                              , istream &_is, ostream &_os
+#endif
+                              )
+    : ip(_ip), dsp(_dsp), rsp(_rsp), state(EX_RUNNING), dstk(_dstk), rstk(_rstk), dsz(_dsz), rsz(_rsz),
+      interp(_interp)
+#ifdef FULLFITH
+    , is(_is), os(_os)
+#endif
 {
 }
 
@@ -797,26 +817,6 @@ void Interpreter::Context::mw_syscall3()
 
 #ifdef FULLFITH
 
-Interpreter::Interpreter(fith_cell *_bin, size_t _binsz, fith_cell *_heap, size_t _heapsz,
-                         istream &_is, ostream &_os)
-    : bin(_bin), heap(_heap), binsz(_binsz), heapsz(_heapsz), is(_is), os(_os)
-{
-    // clear heap
-    for(size_t i=0;i<heapsz;++i){
-        heap[i]=0;
-    }
-    compilestate=false;
-
-    // first words in each space denote the space consumed so far
-    bin[HEREAT]=1;   // HERE    
-    heap[HEREAT]=HEAPUSED;  // HEREDATA
-    heap[WORDLENAT]=0;
-    
-    latestword="";
-
-    // generate a bunch of builtin functions
-    bootstrap();
-}
 
 void Interpreter::bootstrap()
 {
@@ -828,28 +828,6 @@ void Interpreter::bootstrap()
     dictionary["IMMEDIATE"] |= FLAG_IMMED;
     dictionary["["] |= FLAG_IMMED;
     
-    // : OVER ( x y -- x y x ) SWAP DUP NROT ;
-    fith_cell over=here();
-    create("OVER", over);
-    compile(MW_SWAP);
-    compile(MW_DUP);
-    compile(MW_NROT);
-    compile(MW_EXIT);
-
-    // : TUCK ( x y -- y x y ) SWAP OVER ;
-    fith_cell tuck=here();
-    create("TUCK", tuck);
-    compile(MW_SWAP);
-    compile(over, false);
-    compile(MW_EXIT);
-
-    // : NIP ( x y -- y ) SWAP DROP ;
-    fith_cell nip=here();
-    create("NIP", nip);
-    compile(MW_SWAP);
-    compile(MW_DROP);
-    compile(MW_EXIT);
-
     // : : WORD CREATE (LIT DOCOL , ) LATEST @ HIDDEN ] ;
     fith_cell colon=here();
     create(":", colon);
@@ -871,6 +849,15 @@ void Interpreter::bootstrap()
     compile(MW_COMMA);
     compile(MW_HIDDEN);    // toggle hidden-bit
     compile(MW_LBRAC);     // back to immediate mode
+    compile(MW_EXIT);
+
+    // QUIT: do { interpret } while(!eof) 
+    fith_cell quit=here();
+    create("QUIT", quit);
+    compile(MW_INTERPRET);
+    compile(MW_EOF);
+    compile(MW_JZ);
+    compile(-2, false);
     compile(MW_EXIT);
 }
 
@@ -964,13 +951,15 @@ void Interpreter::Context::mw_key()
     }
 
     char c;
-    interp.is.get(c);  // blocking read 1 char
-    if(!interp.is){
+    is.get(c);  // blocking read 1 char
+    if(!is){
         // fail, eof, etc
-        c=0;
+        dstk[dsp++]=-1;
     }
-    // push result as int
-    dstk[dsp++]=(fith_cell) c;
+    else{
+        // push result as int
+        dstk[dsp++]=(fith_cell) c;
+    }
 }
 
 void Interpreter::Context::mw_emit()
@@ -979,8 +968,7 @@ void Interpreter::Context::mw_emit()
         state=Interpreter::EX_DSTK_UNDER;
         return;
     }
-    interp.os.put((char)(dstk[--dsp] & 0xFF));
-    
+    os.put((char)(dstk[--dsp] & 0xFF));
 }
 
 void Interpreter::Context::mw_word()
@@ -991,9 +979,9 @@ void Interpreter::Context::mw_word()
     }
     
     string str;
-    interp.is >> str; // it's nice to cheat...
+    is >> str; // it's nice to cheat...
 
-    if(!interp.is){
+    if(!is){
         // EOF/fail
         interp.heap[WORDLENAT]=-1;
         ((char *) &interp.heap[WORDBUFAT])[0]='\0';
@@ -1017,6 +1005,16 @@ void Interpreter::Context::mw_word()
     
     // push ptr
     dstk[dsp++]=WORDLENAT;
+}
+
+void Interpreter::Context::mw_eof()
+{
+    if(dsp >= dsz){
+        state=EX_DSTK_OVER;
+        return;
+    }
+
+    dstk[dsp++]=is.good() ? 0 : 1;
 }
 
 void Interpreter::Context::mw_number()
@@ -1053,7 +1051,7 @@ void Interpreter::Context::mw_dot()
         state=EX_DSTK_UNDER;
         return;
     }
-    interp.os << dstk[--dsp] << ' ';
+    os << dstk[--dsp] << ' ';
 }
 
 void Interpreter::Context::mw_tell()
@@ -1064,7 +1062,7 @@ void Interpreter::Context::mw_tell()
     }
     const char *str=interp.get_string(dstk[--dsp]);
     if(str != NULL){
-        interp.os << str;
+        os << str;
     }
 }
 
@@ -1130,6 +1128,33 @@ void Interpreter::Context::mw_find()
     dstk[dsp-1]=interp.find(p);
 }
 
+void Interpreter::Context::mw_latest()
+{
+    if(dsp >= dsz){
+        state=Interpreter::EX_DSTK_OVER;
+        return;
+    }
+    
+    // truncate
+    string str=interp.latestword;
+    size_t len=str.length();
+    if(len > WORDSZ*4-1){
+        len=WORDSZ*4-1;
+        str.resize(len);
+    }
+    // copy length into heap into fixed-size buffer
+    interp.heap[LATESTLENAT]=len;
+    // copy string data plus NUL
+    memcpy((char *) &interp.heap[LATESTBUFAT], str.c_str(), len+1);
+
+#ifndef NDEBUG
+    cerr << "latest " << str << endl;
+#endif
+    
+    // push ptr
+    dstk[dsp++]=LATESTLENAT;
+}
+
 void Interpreter::Context::mw_immediate()
 {
     di i=interp.dictionary.find(interp.latestword);
@@ -1173,7 +1198,7 @@ void Interpreter::Context::mw_interpret()
     mw_word();
     if(interp.heap[WORDLENAT] < 1){
         --dsp;
-        return; // nothing good
+        return; // QUIT will need to break out
     }
     // word ptr is on stack
 
@@ -1184,12 +1209,10 @@ void Interpreter::Context::mw_interpret()
         // got it; ptr to word is on stack
         if(!interp.compilestate || (wordptr & FLAG_IMMED) != 0){
             // is immediate or am in immediate mode, so call it
-            // cerr << "interp immed word\n";
             mw_call();
             return;
         }
         else{
-            // cerr << "interp compile word\n";
             // compile it.
             mw_comma();
         }
@@ -1200,26 +1223,23 @@ void Interpreter::Context::mw_interpret()
         
         // not found.  is it a number?
         mw_number();
-        // cerr << "num: " << dstk[dsp-2] << ", " << dstk[dsp-1] << endl;
         if(dstk[dsp-1] == 0){
             // parse success. drop the success flag; have pushed number
             --dsp;
 
             // compile mode: LIT number
             if(interp.compilestate){
-                // cerr << "interp compile lit\n";
                 interp.compile(MW_LIT);
                 mw_comma();
             }
             else{
-                // cerr << "interp immed lit\n";
+                // leave the number on the stack
             }
-            // else leave the number on the stack
         }
         else{
             // parse failure; whinge
             dsp-=2;            
-            interp.os << "Unrecognised word " << ((char *) &interp.heap[WORDBUFAT]) << endl;
+            os << "Unrecognised word " << ((char *) &interp.heap[WORDBUFAT]) << endl;
             return;
         }
     }

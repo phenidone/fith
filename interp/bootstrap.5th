@@ -1,0 +1,28 @@
+
+: OVER SWAP DUP -ROT ;
+: TUCK SWAP OVER ;
+: NIP SWAP DROP ;
+
+: TRUE 1 ;
+: FALSE 0 ;
+: NOT 0 = ;
+
+: SPACE 32 EMIT ;
+: CR 10 EMIT ;
+
+: CHAR WORD 1 + @ 0xFF & ;
+: LITERAL IMMEDIATE ' LIT , , ;
+
+: ';' [ CHAR ; ] LITERAL ;
+: ':' [ CHAR : ] LITERAL ;
+: '(' [ CHAR ( ] LITERAL ;
+: ')' [ CHAR ) ] LITERAL ;
+: '"' [ CHAR " ] LITERAL ;
+: 'A' [ CHAR A ] LITERAL ;
+: '0' [ CHAR 0 ] LITERAL ;
+: '-' [ CHAR - ] LITERAL ;
+: '.' [ CHAR . ] LITERAL ;
+
+: [COMPILE] IMMEDIATE WORD FIND , ;
+
+: RECURSE IMMEDIATE LATEST FIND , ;

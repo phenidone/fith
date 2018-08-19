@@ -88,23 +88,16 @@ public:
     };
         
     /**
-     * Create baseline, non-interactive, non-compiling interpreter.
-     * Requires that we pass in a ready-to-run binary of fixed size.
+     * Create interpreter.
      *
      * @param bin pointer to loaded executable binary
      * @param binsz number of fith_cells in the binary
      * @param heap pointer to a heap space
      * @param heapsz number of fith_cells in the heap
-     */
-    Interpreter(fith_cell *_bin, std::size_t _binsz, fith_cell *_heap, std::size_t _heapsz);
-
-#ifdef FULLFITH
-    /**
-     * Create an interactive interpreter with IO streams and compilation capabilities
+     * @param bs should the binary+heap be initialised to a raw bootstrapped state?  false if binary preloaded
      */
     Interpreter(fith_cell *_bin, std::size_t _binsz, fith_cell *_heap, std::size_t _heapsz,
-                std::istream &_is, std::ostream &_os);
-#endif
+                bool bs=true);
     
     enum {
         MW_EXIT = 0,    ///< exit/ret
@@ -162,12 +155,14 @@ public:
         MW_KEY,         ///< wait and retrieve next keystroke
         MW_EMIT,        ///< emit one char
         MW_WORD,        ///< read a word/identifier from input stream
+        MW_EOF,         ///< is the input stream EOF or otherwise failed?
         MW_NUMBER,      ///< parse a string as a number ( ptr -- results unconverted )
         MW_DOT,         ///< print TOS as int
         MW_TELL,        ///< print TOS, assuming string ptr
 
         MW_CREATE,      ///< create a word definition
         MW_FIND,        ///< lookup a word in code space, by name
+        MW_LATEST,      ///< get name that was passed to most recent CREATE
         MW_IMMEDIATE,   ///< toggle the immediate flag of the latest word definition
         MW_HIDDEN,      ///< toggle the hidden flag a word definition
         MW_LBRAC,       ///< left-bracket, enter immediate mode
@@ -194,8 +189,16 @@ public:
          * @param _rsp return stack pointer (number of valid cells)
          * @param _dsz size of the data stack (cells)
          * @param _rsz size of the return stack (cells)
+         * @param _interp pointer to interpreter
+         * @param _is input stream
+         * @param _os output stream
          */
-        Context(std::size_t _ip, fith_cell *_dstk, fith_cell *_rstk, std::size_t &_dsp, std::size_t &_rsp, std::size_t _dsz, std::size_t _rsz, Interpreter &_interp);
+        Context(std::size_t _ip, fith_cell *_dstk, fith_cell *_rstk, std::size_t &_dsp, std::size_t &_rsp,
+                std::size_t _dsz, std::size_t _rsz, Interpreter &_interp
+#ifdef FULLFITH
+                , std::istream &_is, std::ostream &_os
+#endif
+            );
 
         /**
          * Run the interpreter until the called word returns or something breaks.
@@ -264,11 +267,13 @@ public:
         void mw_key();
         void mw_emit();
         void mw_word();
+        void mw_eof();
         void mw_number();
         void mw_dot();
         void mw_tell();
         void mw_create();
         void mw_find();
+        void mw_latest();
         void mw_immediate();
         void mw_hidden();
         void mw_lbrac();
@@ -294,6 +299,11 @@ public:
         const std::size_t dsz;
         const std::size_t rsz;
         Interpreter &interp;
+
+#ifdef FULLFITH
+        std::istream &is;
+        std::ostream &os;
+#endif
     };
 
 #ifdef FULLFITH
@@ -303,7 +313,9 @@ public:
         HEREAT=0,
         WORDLENAT,
         WORDBUFAT,
-        HEAPUSED=WORDBUFAT+WORDSZ
+        LATESTLENAT=WORDBUFAT+WORDSZ,
+        LATESTBUFAT,
+        HEAPUSED=LATESTBUFAT+WORDSZ
     };
 
     /// allocation of binary space/variables
@@ -362,9 +374,6 @@ private:
     typedef dict_t::iterator di;
     typedef dict_t::const_iterator dci;
     
-    std::istream &is;
-    std::ostream &os;
-
     // we encode flags in the top three bits,
     // which means we have only 29-bit (*4 byte) = 2GB usable address space.
     static const fith_cell FLAG_MACHINE=  0x80000000;     ///< is a machine opcode
