@@ -24,8 +24,17 @@
 : '.' [ CHAR . ] LITERAL ;
 
 : [COMPILE] IMMEDIATE WORD FIND , ;
-
 : RECURSE IMMEDIATE LATEST FIND , ;
+
+: BEGIN IMMEDIATE
+  HERE @C
+;
+
+: UNTIL IMMEDIATE
+  HERE @C -
+  ' JZ ,
+  ,
+;
 
 : IF IMMEDIATE
   ' JZ ,
@@ -34,8 +43,7 @@
 ;
 
 : ENDIF IMMEDIATE
-  DUP
-  HERE @C
+  DUP HERE @C
   SWAP - 1 +
   SWAP !C
 ;
@@ -45,4 +53,47 @@
   HERE @C
   0 ,
   SWAP [COMPILE] ENDIF
+;
+
+: ( IMMEDIATE
+  1
+  BEGIN
+    CHAR
+    DUP '(' = IF
+      SWAP 1 + SWAP
+    ENDIF
+    ')' = IF
+      1 -
+    ENDIF
+    DUP NOT
+  UNTIL
+  DROP
+;
+
+( now we can have comments in parens )
+
+( BEGIN body cond UNTIL
+  implements do { body; } while(cond); )
+
+( BEGIN cond WHILE body LOOP
+  implements while(cond){ body }
+  because BEGIN was compiled first, we already have the
+  loop target address on the stack )
+
+: WHILE IMMEDIATE
+  ' JZ ,    ( compile conditional branch )
+  HERE @C   ( target &offset )
+  0 ,       ( offset=0 )
+;
+
+( end of a loop )
+( target &off -- )
+: LOOP IMMEDIATE
+  HERE @C       ( target &offset &jmp )
+  ' JMP ,       ( compile jmp )
+  ROT SWAP -    ( &offset target-&jmp )
+  ,             ( &offset )
+  DUP HERE @C   ( &offset &offset endloop )
+  SWAP - 1 +    ( &offset endloop-&offset+1 )
+  SWAP !C       ( patch the while-condition )
 ;
