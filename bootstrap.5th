@@ -35,7 +35,8 @@
 
 : ENDIF IMMEDIATE
   DUP
-  HERE @C SWAP - 1 +
+  HERE @C
+  SWAP - 1 +
   SWAP !C
 ;
 
@@ -43,7 +44,5 @@
   ' JMP ,
   HERE @C
   0 ,
-  SWAP DUP
-  HERE @C SWAP - 1 +
-  SWAP !C
+  SWAP [COMPILE] ENDIF
 ;
