@@ -1,8 +1,4 @@
 
-: OVER SWAP DUP -ROT ;
-: TUCK SWAP OVER ;
-: NIP SWAP DROP ;
-
 : TRUE 1 ;
 : FALSE 0 ;
 : NOT 0 = ;
@@ -58,7 +54,7 @@
 : ( IMMEDIATE
   1
   BEGIN
-    CHAR
+    KEY
     DUP '(' = IF
       SWAP 1 + SWAP
     ENDIF
@@ -70,10 +66,44 @@
   DROP
 ;
 
-( now we can have comments in parens )
+( ***************************************************
+  the above consumes nested parenthetical comments
+  by consuming input and tracking left/right parens
+  in a counter until they balance.
+  So now we can have comments in parens!
+  
+  The limitation is that the first opening paren must
+  be a word unto itself because it must be discovered
+  by WORD inside INTERPRET, in order to call the above.
+  *************************************************** )
+
+( ***************************************************
+  Stack manipulation stuff
+  *************************************************** )
+
+( x y -- x y x )
+: OVER 1 PICK ;
+( x y -- y x y )
+: TUCK DUP -ROT ;
+( x y -- y )
+: NIP SWAP DROP ;
+
+( x y -- )
+: 2DROP DROP DROP ;
+( x y -- x y x y )
+: 2DUP DUP 2 PICK SWAP ;
+( x y a b -- a b x y )
+: 2SWAP 4 ROLL 4 ROLL ;
+
+( ***************************************************
+  Compiler: flow control primitives
+  *************************************************** )
+
+( cond IF truepart [ ELSE falsepart ] ENDIF
+  implements the usual selection construct )
 
 ( BEGIN body cond UNTIL
-  implements do { body; } while(cond); )
+  implements do { body; } while(!cond); )
 
 ( BEGIN cond WHILE body LOOP
   implements while(cond){ body }
@@ -86,14 +116,187 @@
   0 ,       ( offset=0 )
 ;
 
-( end of a loop )
+( end of a while-loop )
 ( target &off -- )
 : LOOP IMMEDIATE
   HERE @C       ( target &offset &jmp )
   ' JMP ,       ( compile jmp )
   ROT SWAP -    ( &offset target-&jmp )
   ,             ( &offset )
-  DUP HERE @C   ( &offset &offset endloop )
-  SWAP - 1 +    ( &offset endloop-&offset+1 )
-  SWAP !C       ( patch the while-condition )
+  [COMPILE] ENDIF ( patch the while-condition )
+;
+
+
+( beginning of a definite (do/for) loop )
+( we keep both the limit and the counter on
+  the return stack at runtime.  It's compiled
+  (just like in C) as a while loop, and we insert
+  the initialisation, condition, continuation and
+  termination code here )
+( runtime: start limit -- )
+: FOR IMMEDIATE
+  ' >R DUP , ,  ( R: limit start )
+  [COMPILE] BEGIN
+    ' R> ,
+    ' R@ ,      ( pos limit )
+    ' OVER ,
+    ' >R ,      ( restore pos to return-stack )
+    ' < ,       ( condition: pos<limit )
+  [COMPILE] WHILE
+;
+
+
+( end of a FOR loop.  Install the continuation (++pos)
+  code, put the loop-end in, then compile cleanup )
+: ROF IMMEDIATE
+  ' R> ,            ( pos from retstack )
+  1 [COMPILE] LITERAL ' + ,   ( pos+1 )
+  ' >R ,            ( pos to retstack )
+  [COMPILE] LOOP
+  ' RDROP DUP , ,   ( pos, limit off retstack )
+;
+
+
+( end of a FOR loop with arbitrary +=
+  code, put the loop-end in, then compile cleanup )
+: +ROF IMMEDIATE
+  ' R> ,            ( pos from retstack )
+  ' + ,             ( pos+delta )
+  ' >R ,            ( pos to retstack )
+  [COMPILE] LOOP
+  ' RDROP DUP , ,   ( pos, limit off retstack )
+;
+
+
+
+( get the iterator of the inner for-loop )
+( -- i )
+: FOR_I IMMEDIATE
+  ' R@ ,
+;
+
+( ***************************************************
+  Heap allocator
+  *************************************************** )
+
+( allocate words on the heap and return pointer to first one )
+( sz -- ptr )
+: ALLOT
+  HERE @ DUP    ( sz ptr ptr )
+  ROT +         ( ptr ptr+sz )
+  HERE !        ( ptr {*here=ptr+sz} )
+;
+
+( round up to multiple of 4 (bytes -> cells) & divide by 4)
+: ALIGNED
+  3 + 2 >>
+;
+( round up strlen, plus room for nul terminator, to a cell count )
+: ALIGNEDZ
+  4 + 2 >>
+;
+
+( ***************************************************
+  string handling.  Strings are kept in the heap as a
+  length (1 cell) followed by character data and are
+  NUL-terminated
+  *************************************************** )
+
+( obtain length of string, in bytes/chars )
+( ptr -- len )
+: STRLEN
+  @
+;
+( obtain total size of string, in cells )
+( ptr -- size )
+: STRSIZE
+  @ ALIGNEDZ 1 +
+;
+
+( calculate bit-shift distance for getting/setting chars in cells )
+: BYTEOFF2BITOFF
+  3 & 3 <<
+;
+
+( select one char from within a 32-bit cell, assuming little-endian )
+( cell off -- char )
+: SELCHAR
+  BYTEOFF2BITOFF DUP ( cell bitoff bitoff )
+  0xFF SWAP <<      ( cell bitoff mask )
+  ROT &             ( bitoff cell&mask )
+  SWAP >>
+;
+
+( save the current word while building a string )
+( ptr accum count -- ptr accum=0 count )
+: _STRIMMSAVE 
+  SWAP 2 PICK ( ptr count accum ptr )
+  !           ( ptr count )
+  SWAP 1 + SWAP ( ++ptr count )
+  0 SWAP        ( ptr accum=0 count )
+;
+
+( append a char to a string we're building )
+( ptr count accum key -- ptr count++ accum+ )
+: _STRIMMBODY 
+  2 PICK      ( ptr count accum key count )
+  BYTEOFF2BITOFF << | ( ptr count accum )
+
+  SWAP 1 +       ( ptr accum ++count )
+  DUP 3 & 0 = IF ( installed 4th char in a word, save it )
+    _STRIMMSAVE
+  ENDIF
+;
+
+( string literal in the code.  stored little-endian in heap )
+: " IMMEDIATE
+  HERE @        ( str )
+  DUP 1 + 0 DUP ( str ptr count accum )
+  BEGIN
+    KEY DUP '"' = NOT       ( while not end of string )
+  WHILE         ( str ptr count accum key )
+    _STRIMMBODY ( str ptr count accum )
+  LOOP
+  0             ( str ptr count accum NUL )
+  _STRIMMBODY   ( append NUL )
+  SWAP          ( str ptr accum count )
+  DUP IF
+    _STRIMMSAVE   ( save the last word if not done )
+  ENDIF         ( str ptr accum count )
+  -ROT 2DROP     ( str count )
+  OVER !         ( str {*str=count, saves length} )
+;
+
+
+( extract single char from a string )
+( ptr off -- char )
+: [@]
+  DUP 0 < IF
+      2DROP         ( bounds check neg len )
+      0 EXIT        ( return NUL )
+  ENDIF
+  OVER STRLEN       ( PTR OFF LEN )
+  2DUP              ( PTR OFF LEN OFF LEN )
+  >= IF             ( bounds check )
+     2DROP DROP
+     0 EXIT         ( return NUL )
+  ENDIF
+  DROP DUP 2 >>     ( PTR OFF OFF/4 )
+  ROT + 1 + @       ( off str[off/4+1] )
+  SWAP SELCHAR
+;
+
+( copy a string/block )
+( ptr -- newptr )
+: STRDUP
+  DUP STRSIZE       ( ptr size )
+  DUP ALLOT DUP     ( ptr size newptr newptr )
+  -4 ROLL           ( newptr ptr size newptr )
+  0 ROT             ( newptr ptr newptr 0 size )
+  FOR               ( newptr ptr newptr )
+    SWAP DUP @      ( newptr newptr ptr val )
+    2 PICK !        ( newptr newptr ptr {*newptr=val} )
+    1 + SWAP 1 +    ( newptr ptr+1 newptr+1 )
+  ROF
+  2DROP             ( newptr )
 ;

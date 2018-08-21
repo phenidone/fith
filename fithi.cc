@@ -612,16 +612,29 @@ void Interpreter::Context::mw_pick()
 }
 void Interpreter::Context::mw_roll()
 {
-    if(dsp < 2 || dstk[dsp-1] < 0 || dsp < size_t(dstk[dsp-1]+2)){
+    if(dsp < 2 || dsp < size_t(abs(dstk[dsp-1])+1)){
         state=Interpreter::EX_DSTK_UNDER;
     }
     else{
         fith_cell n=dstk[--dsp];
-        fith_cell tmp=dstk[dsp-n-1];
-        for(fith_cell i=n;i>0;--i){
-            dstk[dsp-i-1]=dstk[dsp-i];
+
+        if(n > 1){
+            // roll n cells upwards, updating the range [-n .. -1]
+            fith_cell tmp=dstk[dsp-n];
+            for(fith_cell i=n;i>1;--i){
+                dstk[dsp-i]=dstk[dsp-i+1];
+            }
+            dstk[dsp-1]=tmp;
         }
-        dstk[dsp-1]=tmp;
+        else if(n < 1){
+            // roll downwards, updating [-n .. -1
+            n=-n;
+            fith_cell tmp=dstk[dsp-1];
+            for(fith_cell i=1;i<n;++i){
+                dstk[dsp-i]=dstk[dsp-i-1];
+            }
+            dstk[dsp-n]=tmp;
+        }
     }
 }
 
