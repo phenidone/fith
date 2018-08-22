@@ -20,7 +20,6 @@
 : '.' [ CHAR . ] LITERAL ;
 
 : [COMPILE] IMMEDIATE WORD FIND , ;
-: RECURSE IMMEDIATE LATEST FIND , ;
 
 : BEGIN IMMEDIATE
   HERE @C
@@ -91,9 +90,60 @@
 ( x y -- )
 : 2DROP DROP DROP ;
 ( x y -- x y x y )
-: 2DUP DUP 2 PICK SWAP ;
+: 2DUP OVER OVER ;
 ( x y a b -- a b x y )
 : 2SWAP 4 ROLL 4 ROLL ;
+
+( ***************************************************
+  Compiler: function primitives
+  *************************************************** )
+
+( insert call to the function we're compiling )
+: RECURSE IMMEDIATE
+  LATEST FIND ,
+;
+
+( insert jump (tail recursion) to the beginning of current function )
+: TAIL IMMEDIATE
+  LATEST FIND 0x1FFFFFFF &
+  HERE @C -                 ( compute offset )
+  ' JMP ,
+  ,                         ( compile jump )
+;
+
+( insert jump-IF-NONZERO to the beginning of current function )
+: ?TAIL IMMEDIATE
+  ' NOT ,                   ( invert TOS )
+  LATEST FIND 0x1FFFFFFF &  ( recursion pointer, clear hidden/immed flags )
+  HERE @C  -                ( compute offset )
+  ' JZ ,
+  ,                         ( compile jump )
+;
+
+( recursive factorial on stack )
+( n -- n! )
+: FACTORIAL
+  DUP IF
+    DUP 1 - RECURSE *
+  ELSE
+    DROP 1
+  ENDIF
+;
+
+( accum n -- accum*n n-1 )
+: _TAILFACTINNER
+  DUP ROT *     ( n accum*n )
+  SWAP 1 -      ( accum n-1 )
+  DUP ?TAIL     ( tail recursion when n != 0 )
+;
+
+( tail-recursed factorial as a loop )
+( n -- n! )
+: TAILFACT
+  1 SWAP         ( 1 n )
+  _TAILFACTINNER ( n! 0 )
+  DROP
+;
 
 ( ***************************************************
   Compiler: flow control primitives
