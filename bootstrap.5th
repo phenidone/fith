@@ -199,7 +199,10 @@
 ( ***************************************************
   string handling.  Strings are kept in the heap as a
   length (1 cell) followed by character data and are
-  NUL-terminated
+  NUL-terminated.
+  This string code is DISGUSTING, an artefact of
+  the desire to do byte-oriented manipulations in
+  a system where the address granularity is 32 bits.
   *************************************************** )
 
 ( obtain length of string, in bytes/chars )
@@ -207,7 +210,7 @@
 : STRLEN
   @
 ;
-( obtain total size of string, in cells )
+( obtain total size of string, in cells, incl len-header )
 ( ptr -- size )
 : STRSIZE
   @ ALIGNEDZ 1 +
@@ -228,12 +231,12 @@
 ;
 
 ( save the current word while building a string )
-( ptr accum count -- ptr accum=0 count )
+( ptr count accum -- ptr count accum=0 )
 : _STRIMMSAVE 
-  SWAP 2 PICK ( ptr count accum ptr )
-  !           ( ptr count )
+  2 PICK        ( ptr count accum ptr )
+  !             ( ptr count )
   SWAP 1 + SWAP ( ++ptr count )
-  0 SWAP        ( ptr accum=0 count )
+  0             ( ptr count accum=0 )
 ;
 
 ( append a char to a string we're building )
@@ -242,14 +245,16 @@
   2 PICK      ( ptr count accum key count )
   BYTEOFF2BITOFF << | ( ptr count accum )
 
-  SWAP 1 +       ( ptr accum ++count )
-  DUP 3 & 0 = IF ( installed 4th char in a word, save it )
-    _STRIMMSAVE
+  SWAP 1 + SWAP  ( ptr ++count accum )
+  OVER 3 & 0 = IF ( installed 4th char in a word, save it )
+    _STRIMMSAVE  ( ptr count accum )
   ENDIF
 ;
 
 ( string literal in the code.  stored little-endian in heap )
+( compiles a pointer-literal into the output )
 : " IMMEDIATE
+  KEY DROP      ( skip leading space )
   HERE @        ( str )
   DUP 1 + 0 DUP ( str ptr count accum )
   BEGIN
@@ -257,14 +262,17 @@
   WHILE         ( str ptr count accum key )
     _STRIMMBODY ( str ptr count accum )
   LOOP
-  0             ( str ptr count accum NUL )
+  DROP 0        ( str ptr count accum NUL )
   _STRIMMBODY   ( append NUL )
-  SWAP          ( str ptr accum count )
-  DUP IF
+
+  OVER 3 & 0 > IF
     _STRIMMSAVE   ( save the last word if not done )
-  ENDIF         ( str ptr accum count )
-  -ROT 2DROP     ( str count )
-  OVER !         ( str {*str=count, saves length} )
+  ENDIF         ( str ptr count accum )
+  DROP SWAP     ( str count ptr )
+  HERE !        ( str count {*here=ptr} )
+  OVER !        ( str {*str=count, saves length} )
+
+  [COMPILE] LITERAL ( code that pushes the string location )
 ;
 
 
@@ -290,8 +298,8 @@
 ( ptr -- newptr )
 : STRDUP
   DUP STRSIZE       ( ptr size )
-  DUP ALLOT DUP     ( ptr size newptr newptr )
-  -4 ROLL           ( newptr ptr size newptr )
+  DUP ALLOT         ( ptr size newptr)
+  DUP -4 ROLL       ( newptr ptr size newptr )
   0 ROT             ( newptr ptr newptr 0 size )
   FOR               ( newptr ptr newptr )
     SWAP DUP @      ( newptr newptr ptr val )
@@ -299,4 +307,15 @@
     1 + SWAP 1 +    ( newptr ptr+1 newptr+1 )
   ROF
   2DROP             ( newptr )
+;
+
+( print a string )
+( ptr -- )
+: MYTELL
+  DUP
+  STRLEN 0 SWAP     ( ptr 0 len )
+  FOR               ( loop through length )
+    DUP FOR_I [@] EMIT ( print a char)
+  ROF
+  DROP              ( drop the ptr)
 ;

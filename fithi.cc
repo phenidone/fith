@@ -3,6 +3,7 @@
 #include "fithi.h"
 #ifdef FULLFITH
 #include <iostream>
+#include <iomanip>
 #include <fstream>
 #include <sstream>
 #include <cstdlib>
@@ -155,6 +156,21 @@ const string Interpreter::opcodes[MW_INTERP_COUNT]={
     "INTERPRET",
     "DUMP"
 };
+
+const string Interpreter::states[EX_INTERP_COUNT]={
+    "Success",
+    "Data Stack Overflow",
+    "Data Stack Underflow",
+    "Return Stack Overflow",
+    "Return Stack Underflow",
+    "Segfault Data",
+    "Segfault Code",
+    "Bad Opcode",
+    "Divide by Zero",
+    "Halted",
+    "Running"
+};
+
 #endif
 
 Interpreter::Interpreter(fith_cell *_bin, size_t _binsz, fith_cell *_heap, size_t _heapsz, bool bs)
@@ -241,6 +257,24 @@ Interpreter::EXEC_RESULT Interpreter::Context::execute()
 void Interpreter::Context::set_ip(size_t _ip)
 {
     ip=_ip;
+}
+
+void Interpreter::Context::printdump(ostream &s)
+{
+    s << "************************" << endl;
+    s << "context state = " << states[state] << endl;
+    s << "IP = " << ip << endl << "D:";
+    size_t stklen=dsp > 6 ? 6 : dsp;
+    for(size_t i=stklen; i>0; --i){
+        s << " " << dstk[dsp-i];
+    }
+    s << endl << "R:";
+    stklen=rsp > 6 ? 6 : rsp;
+    for(size_t i=stklen; i>0; --i){
+        s << " " << rstk[rsp-i];
+    }
+    s << endl;
+    s << "************************" << endl;
 }
 
 
@@ -1317,6 +1351,9 @@ void Interpreter::Context::mw_dump()
             if(label != NULL){
                 ofs << label << ":" << endl;
             }
+
+            ofs << setw(4) << setfill('0') << p << " ";
+            
 
             fith_cell v=interp.bin[p];
             ofs << "  " << opcode_to_string(v);

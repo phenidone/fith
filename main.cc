@@ -1,6 +1,7 @@
 /** -*- C++ -*- */
 
 #include "fithi.h"
+#include <cstdlib>
 #include <iostream>
 #include <fstream>
 
@@ -29,8 +30,13 @@ void bootstrap(Interpreter &interp)
 
         Interpreter::EXEC_RESULT res=ctx.execute();
         ifs.close();
-        
-        cerr << "bootstrap complete" << endl;
+        if(res == Interpreter::EX_SUCCESS){
+            cerr << "bootstrap complete" << endl;
+        }
+        else{
+            cerr << "bootstrap failed" << endl;
+            exit(1);
+        }
     }
     else{
         cerr << "could not load " << BOOTSTRAP_5TH << endl;
@@ -51,11 +57,8 @@ int main()
                              cin, cout);
     Interpreter::EXEC_RESULT res=ctx.execute();
 
-    if(res == Interpreter::EX_SUCCESS){
-        cout << "exited?" << endl;
-    }
-    else{
-        cout << "fail " << res << endl;
+    if(res != Interpreter::EX_SUCCESS){
+        ctx.printdump(cerr);
         return 0;
     }
 

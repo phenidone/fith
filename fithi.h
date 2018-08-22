@@ -211,7 +211,15 @@ public:
          * Choose a new entry-point.
          */
         void set_ip(std::size_t _ip);
+
+#ifdef FULLFITH
+
+        /**
+         * debug-print state
+         */
+        void printdump(std::ostream &s);
         
+#endif
     private:
         
         void mw_exit();
@@ -392,8 +400,10 @@ private:
     static const fith_cell FLAG_HIDE=     0x20000000;     ///< indicates a hidden word
     static const fith_cell FLAG_ADDR=     0x1FFFFFFF;     ///< mask to obtain address from dict
     
-    // machine-word (opcode) names
+    /// machine-word (opcode) names
     static const std::string opcodes[MW_INTERP_COUNT];
+    /// execution state names
+    static const std::string states[EX_INTERP_COUNT];
     
     std::string latestword;
     dict_t dictionary;
