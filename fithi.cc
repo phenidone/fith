@@ -71,7 +71,6 @@ const Interpreter::Context::machineword_t Interpreter::Context::builtin[Interpre
     &Interpreter::Context::mw_eof,
     &Interpreter::Context::mw_number,
     &Interpreter::Context::mw_dot,
-    &Interpreter::Context::mw_tell,
     &Interpreter::Context::mw_create,
     &Interpreter::Context::mw_find,
     &Interpreter::Context::mw_latest,
@@ -144,7 +143,6 @@ const string Interpreter::opcodes[MW_INTERP_COUNT]={
     "EOF",
     "NUMBER",
     ".",
-    "TELL",
     "CREATE",
     "FIND",
     "LATEST",
@@ -1116,18 +1114,6 @@ void Interpreter::Context::mw_dot()
         return;
     }
     os << dstk[--dsp] << ' ';
-}
-
-void Interpreter::Context::mw_tell()
-{
-    if(dsp < 1){
-        state=EX_DSTK_UNDER;
-        return;
-    }
-    const char *str=interp.get_string(dstk[--dsp]);
-    if(str != NULL){
-        os << str;
-    }
 }
 
 void Interpreter::Context::mw_create()

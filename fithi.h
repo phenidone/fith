@@ -158,7 +158,6 @@ public:
         MW_EOF,         ///< is the input stream EOF or otherwise failed?
         MW_NUMBER,      ///< parse a string as a number ( ptr -- results unconverted )
         MW_DOT,         ///< print TOS as int
-        MW_TELL,        ///< print TOS, assuming string ptr
 
         MW_CREATE,      ///< create a word definition
         MW_FIND,        ///< lookup a word in code space, by name
@@ -280,7 +279,6 @@ public:
         void mw_eof();
         void mw_number();
         void mw_dot();
-        void mw_tell();
         void mw_create();
         void mw_find();
         void mw_latest();

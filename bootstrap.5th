@@ -373,7 +373,7 @@
 
 ( print a string )
 ( ptr -- )
-: MYTELL
+: TELL
   DUP
   STRLEN 0 SWAP     ( ptr 0 len )
   FOR               ( loop through length )
