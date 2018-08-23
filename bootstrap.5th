@@ -8,6 +8,7 @@
 
 : CHAR WORD 1 + @ 0xFF & ;
 : LITERAL IMMEDIATE ' LIT , , ;
+: TICK IMMEDIATE ' ' , , ;
 
 : ';' [ CHAR ; ] LITERAL ;
 : ':' [ CHAR : ] LITERAL ;
@@ -311,7 +312,7 @@
 ;
 
 ( string literal in the code.  stored little-endian in heap )
-( compiles a pointer-literal into the output )
+( compiles a pointer-literal into the output or leaves ptr on stack )
 : " IMMEDIATE
   KEY DROP      ( skip leading space )
   HERE @        ( str )
@@ -331,12 +332,14 @@
   HERE !        ( str count {*here=ptr} )
   OVER !        ( str {*str=count, saves length} )
 
-  [COMPILE] LITERAL ( code that pushes the string location )
+  STATE IF
+    [COMPILE] LITERAL ( code that pushes the string location )
+  ENDIF
+  ( otherwise, just leave the string ptr on the stack )
 
   HIDE _STRIMMBODY
   HIDE _STRIMMSAVE
 ;
-
 
 ( extract single char from a string )
 ( ptr off -- char )
@@ -380,4 +383,15 @@
     DUP FOR_I [@] EMIT ( print a char)
   ROF
   DROP              ( drop the ptr)
+;
+
+( print a string literal )
+: ." IMMEDIATE
+  [COMPILE] "   ( get the string, either on stack or compiled )
+
+  STATE IF
+    ' TELL ,    ( gen code to print it )
+  ELSE
+    TELL        ( just print it )
+  ENDIF
 ;

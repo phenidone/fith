@@ -14,17 +14,20 @@
  * and we need to add:
  * - special read/write-within-heap instructions, separate from write-to-code
  * - an explicit Harvard-like data/code separation
- * - an offline compiler, which adds back in most of the missing features
- *   in order to bootstrap the system.
+ *
+ * However, all those features come back with -DFULLFITH, allowing you
+ * to run a normal interactive FITH (forth) shell including self-hosting
+ * compiler.  The intention is that:
+ * - a full session, including the compiler is run
+ * - the memory contents are dumped to a couple of files
+ * - a GC filters the dump files to contain only the code within
+ *   the call-graph of specified entry-points (compiler goes away!)
+ * - the GC'd binaries are loaded into an embedded system running the
+ *   limited interpreter with no stdio and no writing to code-space
  *
  * That's an ugly workflow compared to normal Forth, but should result
  * in safer high-level programs that cannot so easily corrupt themselves,
  * and which do not actually need to perform compilation at runtime.
- *
- * The binary that this interpreter executes is distilled from a
- * less-constrained, more-complete Forth-like system.  Or it should
- * be possible to compile to this target machine from other imperative
- * languages if necessary.
  *
  * The cell-size is 32 bits, and the address granularity is also 32 bits.
  *
@@ -45,8 +48,10 @@
  * of GC.  For long-running programs, the heap content should be initialised
  * at startup and no allocation should be performed during ongoing execution.
  *
- * The coding (unless #define FULLFITH) lacks STL etc because it is intended to be
- * portable to microcontrollers, except for the part inside #ifdef FULLFITH
+ * The coding (unless -DFULLFITH) lacks STL etc because it is intended to be
+ * portable to microcontrollers.  With -DFULLFITH, STL is used to implement
+ * a few features like the dictionary, therefore the dictionary is not available
+ * in the constrained mode.
  *
  * Strings are represented in the heap as a 1-cell length (number of bytes),
  * followed by the string data, NUL-terminated.  On the stack, they are passed
