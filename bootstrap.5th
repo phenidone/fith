@@ -98,9 +98,15 @@
   Compiler: function primitives
   *************************************************** )
 
+( hide the following word from the dictionary, INTERPRET won't see it )
+( useful for burying inner functions we don't want published )
+: HIDE IMMEDIATE
+  WORD HIDDEN
+;
+
 ( insert call to the function we're compiling )
 : RECURSE IMMEDIATE
-  LATEST FIND ,
+  LATEST FIND 0x1FFFFFFF & ,
 ;
 
 ( insert jump (tail recursion) to the beginning of current function )
@@ -137,12 +143,15 @@
   DUP ?TAIL     ( tail recursion when n != 0 )
 ;
 
+
 ( tail-recursed factorial as a loop )
 ( n -- n! )
 : TAILFACT
   1 SWAP         ( 1 n )
   _TAILFACTINNER ( n! 0 )
   DROP
+
+  HIDE _TAILFACTINNER
 ;
 
 ( ***************************************************
@@ -323,6 +332,9 @@
   OVER !        ( str {*str=count, saves length} )
 
   [COMPILE] LITERAL ( code that pushes the string location )
+
+  HIDE _STRIMMBODY
+  HIDE _STRIMMSAVE
 ;
 
 

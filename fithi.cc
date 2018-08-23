@@ -886,6 +886,7 @@ void Interpreter::bootstrap()
     compile(MW_HERE);
     compile(MW_READCODE);  // HERE @C
     compile(MW_CREATE);
+    compile(MW_LATEST);
     compile(MW_HIDDEN);
     compile(MW_RBRAC);
     compile(MW_EXIT);
@@ -896,6 +897,7 @@ void Interpreter::bootstrap()
     compile(MW_TICK);      // compile EXIT
     compile(MW_EXIT);
     compile(MW_COMMA);
+    compile(MW_LATEST);
     compile(MW_HIDDEN);    // toggle hidden-bit
     compile(MW_LBRAC);     // back to immediate mode
     compile(MW_EXIT);
@@ -1227,7 +1229,13 @@ void Interpreter::Context::mw_immediate()
 
 void Interpreter::Context::mw_hidden()
 {
-    di i=interp.dictionary.find(interp.latestword);
+    if(dsp < 1){
+        state=EX_DSTK_UNDER;
+        return;
+    }
+    const char *str=interp.get_string(dstk[--dsp]);
+    
+    di i=interp.dictionary.find(str);
     if(i != interp.dictionary.end()){
         i->second ^= FLAG_HIDE;
     }
@@ -1269,6 +1277,14 @@ void Interpreter::Context::mw_interpret()
     fith_cell wordptr=dstk[dsp-1];
     if(wordptr != -1){
         // got it; ptr to word is on stack
+
+        // hidden word; don't allow it to be compiled/run
+        if((wordptr & FLAG_HIDE) != 0){
+            os << "Unrecognised word " << ((char *) &interp.heap[WORDBUFAT]) << endl;
+            --dsp;
+            return;
+        }
+        
         if(!interp.compilestate || (wordptr & FLAG_IMMED) != 0){
             // is immediate or am in immediate mode, so call it
             mw_call();
