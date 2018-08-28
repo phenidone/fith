@@ -176,6 +176,8 @@ public:
         MW_INTERPRET,   ///< interactive shell
 
         MW_DUMP,        ///< print out a dump of the code space
+        MW_SAVE,        ///< save a binary containing code and data spaces and a memory map
+        MW_GC,          ///< garbage-collect and relink the binary from a nominated single entry point
 #endif            
         MW_INTERP_COUNT        ///< number of machine-words defined
     };
@@ -296,6 +298,8 @@ public:
         void mw_interpret();
 
         void mw_dump();
+        void mw_save();
+        void mw_gc();
 #endif
 
         std::string opcode_to_string(fith_cell v);
@@ -364,7 +368,8 @@ public:
      * @todo: not linear time
      */
     const char *reverse_find(fith_cell value) const;
-    
+
+   
     /**
      * get name of latest-created word
      */
@@ -390,11 +395,21 @@ private:
      * bootstrap the system: things that are not native code, 
      * but which need to exist to support the self-hosting compiler.
      */
-    void bootstrap();
+    void bootstrap(bool full=true);
     
     typedef std::map<std::string, fith_cell> dict_t;
+    typedef std::map<fith_cell, std::string> revdict_t;
     typedef dict_t::iterator di;
     typedef dict_t::const_iterator dci;
+    typedef revdict_t::iterator rdi;
+    typedef revdict_t::const_iterator rdci;
+
+    /**
+     * Create an inverted dictionary; address-to-name
+     * @param builtins include also the machine-words
+     * @param addronly erase flag bits to leave pure addresses
+     */
+    revdict_t invert_dict(bool builtins=false, bool addronly=true) const;
     
     // we encode flags in the top three bits,
     // which means we have only 29-bit (*4 byte) = 2GB usable address space.

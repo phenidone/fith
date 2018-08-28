@@ -9,18 +9,12 @@
 : CHAR WORD 1 + @ 0xFF & ;
 : LITERAL IMMEDIATE ' LIT , , ;
 : TICK IMMEDIATE ' ' , , ;
+: [COMPILE] IMMEDIATE WORD FIND , ;
 
-: ';' [ CHAR ; ] LITERAL ;
-: ':' [ CHAR : ] LITERAL ;
 : '(' [ CHAR ( ] LITERAL ;
 : ')' [ CHAR ) ] LITERAL ;
 : '"' [ CHAR " ] LITERAL ;
-: 'A' [ CHAR A ] LITERAL ;
-: '0' [ CHAR 0 ] LITERAL ;
-: '-' [ CHAR - ] LITERAL ;
-: '.' [ CHAR . ] LITERAL ;
 
-: [COMPILE] IMMEDIATE WORD FIND , ;
 
 : BEGIN IMMEDIATE
   HERE @C

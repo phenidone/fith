@@ -7,6 +7,8 @@
 #include <fstream>
 #include <sstream>
 #include <cstdlib>
+#include <stdexcept>
+#include <set>
 #endif
 
 using namespace std;
@@ -80,7 +82,9 @@ const Interpreter::Context::machineword_t Interpreter::Context::builtin[Interpre
     &Interpreter::Context::mw_rbrac,
     &Interpreter::Context::mw_state,
     &Interpreter::Context::mw_interpret,
-    &Interpreter::Context::mw_dump
+    &Interpreter::Context::mw_dump,
+    &Interpreter::Context::mw_save,
+    &Interpreter::Context::mw_gc
 #endif
 };
 
@@ -152,7 +156,9 @@ const string Interpreter::opcodes[MW_INTERP_COUNT]={
     "]",
     "STATE",
     "INTERPRET",
-    "DUMP"
+    "DUMP",
+    "SAVE",
+    "GC"
 };
 
 const string Interpreter::states[EX_INTERP_COUNT]={
@@ -867,7 +873,7 @@ void Interpreter::Context::mw_syscall3()
 #ifdef FULLFITH
 
 
-void Interpreter::bootstrap()
+void Interpreter::bootstrap(bool full)
 {
     // put all the opcodes in the dict
     for(int i=0;i<MW_INTERP_COUNT;++i){
@@ -876,38 +882,40 @@ void Interpreter::bootstrap()
     // make some immediate
     dictionary["IMMEDIATE"] |= FLAG_IMMED;
     dictionary["["] |= FLAG_IMMED;
-    
-    // : : WORD HERE @C CREATE LATEST @ HIDDEN ] ;
-    fith_cell colon=here();
-    create(":", colon);
-    compile(MW_WORD);
-    compile(MW_HERE);
-    compile(MW_READCODE);  // HERE @C
-    compile(MW_CREATE);
-    compile(MW_LATEST);
-    compile(MW_HIDDEN);
-    compile(MW_RBRAC);
-    compile(MW_EXIT);
-    
-    // : ; IMMEDIATE ' EXIT , LATEST @ HIDDEN [ ;
-    fith_cell semicolon=here() | FLAG_IMMED;
-    create(";", semicolon);
-    compile(MW_TICK);      // compile EXIT
-    compile(MW_EXIT);
-    compile(MW_COMMA);
-    compile(MW_LATEST);
-    compile(MW_HIDDEN);    // toggle hidden-bit
-    compile(MW_LBRAC);     // back to immediate mode
-    compile(MW_EXIT);
 
-    // QUIT: do { interpret } while(!eof) 
-    fith_cell quit=here();
-    create("QUIT", quit);
-    compile(MW_INTERPRET);
-    compile(MW_EOF);
-    compile(MW_JZ);
-    compile(-2, false);
-    compile(MW_EXIT);
+    if(full){    
+        // : : WORD HERE @C CREATE LATEST @ HIDDEN ] ;
+        fith_cell colon=here();
+        create(":", colon);
+        compile(MW_WORD);
+        compile(MW_HERE);
+        compile(MW_READCODE);  // HERE @C
+        compile(MW_CREATE);
+        compile(MW_LATEST);
+        compile(MW_HIDDEN);
+        compile(MW_RBRAC);
+        compile(MW_EXIT);
+    
+        // : ; IMMEDIATE ' EXIT , LATEST @ HIDDEN [ ;
+        fith_cell semicolon=here() | FLAG_IMMED;
+        create(";", semicolon);
+        compile(MW_TICK);      // compile EXIT
+        compile(MW_EXIT);
+        compile(MW_COMMA);
+        compile(MW_LATEST);
+        compile(MW_HIDDEN);    // toggle hidden-bit
+        compile(MW_LBRAC);     // back to immediate mode
+        compile(MW_EXIT);
+
+        // QUIT: do { interpret } while(!eof) 
+        fith_cell quit=here();
+        create("QUIT", quit);
+        compile(MW_INTERPRET);
+        compile(MW_EOF);
+        compile(MW_JZ);
+        compile(-2, false);
+        compile(MW_EXIT);
+    }
 }
 
 void Interpreter::compile(fith_cell c, bool machine)
@@ -952,6 +960,23 @@ const char *Interpreter::reverse_find(fith_cell value) const
     }
 
     return NULL;
+}
+
+Interpreter::revdict_t Interpreter::invert_dict(bool builtins, bool addronly) const
+{
+    revdict_t result;
+
+    for(dci i=dictionary.begin();i!=dictionary.end();++i){
+        if(builtins || (i->second & FLAG_MACHINE) == 0){
+            fith_cell addr=i->second;
+            if(addronly){
+                addr &= FLAG_ADDR;
+            }
+            result[addr]=i->first;
+        }
+    }
+
+    return result;
 }
 
 const string &Interpreter::latest() const
@@ -1339,11 +1364,11 @@ void Interpreter::Context::mw_dump()
     fith_cell HERE=interp.bin[HEREATB];
 
     if(HERE < 0 || size_t(HERE) > interp.binsz){
-        cerr << "invalid HERE in dump" << endl;
+        cerr << "invalid HERE in DUMP" << endl;
         return;
     }
     
-    ofstream ofs("bindump.txt", ios::out);
+    ofstream ofs("bindump.txt", ios::out | ios::trunc);
 
     if(ofs){
         ofs << "HERE = " << HERE << endl;
@@ -1376,6 +1401,248 @@ void Interpreter::Context::mw_dump()
     else{
         cerr << "bin dump failed\n";
     }
+}
+
+void Interpreter::Context::mw_save()
+{
+ 
+    fith_cell HEREB=interp.bin[HEREATB];
+    fith_cell HERED=interp.heap[HEREAT];
+    
+    if(HEREB < 0 || size_t(HEREB) > interp.binsz){
+        cerr << "invalid HEREB in SAVE" << endl;
+        return;
+    }
+
+    if(HERED < 0 || size_t(HERED) > interp.heapsz){
+        cerr << "invalid HERED in SAVE" << endl;
+        return;
+    }
+    
+    ofstream ofs;
+    try{
+        ofs.open("fith.map", ios::out | ios::trunc);
+        if(!ofs){
+            throw runtime_error("open(\"fith.map\") failed");
+        }
+        
+        ofs << hex;
+        for(dci i=interp.dictionary.begin();i!=interp.dictionary.end();++i){
+            if((i->second & (FLAG_MACHINE | FLAG_HIDE)) == 0){
+                ofs << setw(8) << setfill('0') << i->second << setw(0) << " " << i->first << endl;
+                if(!ofs){
+                    throw runtime_error("write(\"fith.map\") failed");
+                }
+            }
+        }
+        ofs.close();
+
+        ofs.open("fith.bin", ios::out | ios::trunc | ios::binary);
+        if(!ofs){
+            throw runtime_error("open(\"fith.bin\") failed");
+        }
+
+        ofs.write((const char *) &interp.bin[0], HEREB*sizeof(fith_cell));
+        if(!ofs){
+            throw runtime_error("write(\"fith.bin\") failed");
+        }
+        ofs.close();
+
+        ofs.open("fith.dat", ios::out | ios::trunc | ios::binary);
+        if(!ofs){
+            throw runtime_error("open(\"fith.dat\") failed");
+        }
+
+        ofs.write((const char *) &interp.heap[0], HERED*sizeof(fith_cell));
+        if(!ofs){
+            throw runtime_error("write(\"fith.dat\") failed");
+        }
+        ofs.close();
+
+        os << "SAVE success" << endl;
+    }
+    catch(runtime_error &e){
+        cerr << e.what() << endl;
+        if(ofs.is_open()){
+            ofs.close();
+        }
+        return;
+    }
+
+}
+
+void Interpreter::Context::mw_gc()
+{
+    if(dsp < 1){
+        state=EX_DSTK_UNDER;
+        return;
+    }
+  
+    typedef set<fith_cell> cset;
+    typedef cset::iterator csi;
+    typedef cset::const_iterator csci;
+    typedef map<fith_cell, fith_cell> ccmap;
+    typedef ccmap::const_iterator cmci;
+
+    // address-to-name mapping
+    revdict_t rd=interp.invert_dict();
+
+    // compute the size of each function, assuming each entry
+    // in the dict is a whole function that ends at the next
+    // dictionary entry
+    ccmap extents;
+
+    for(rdci i=rd.begin();i!=rd.end();++i){
+        rdci j=i;  ++j;
+        if(j == rd.end()){
+            // last thing: goes to HERE
+            extents[i->first]=interp.bin[HEREATB] - i->first;
+        }
+        else{
+            // len = next - current
+            extents[i->first]=j->first - i->first;
+        }
+        
+        if(extents[i->first] <= 0){
+            cerr << "bad extents in GC" << endl;
+            state=EX_SEGV_CODE;
+            return;
+        }
+    }
+    
+    // set of functions in the call-tree of the root
+    cset live;
+    // set of functions to inspect
+    cset todo;
+
+    // put root in the search-list
+    todo.insert(dstk[--dsp] & FLAG_ADDR);
+
+    // simple marking collector
+    while(!todo.empty()){
+        // pop
+        csi i=todo.begin();
+        fith_cell ptr=*i;
+        todo.erase(i);
+
+        // is it a valid function we know the size of?
+        if(extents.count(ptr) != 0){
+
+#ifndef NDEBUG
+            cerr << "GC " << rd[ptr] << endl;
+#endif
+            // remember it
+            live.insert(ptr);
+
+            // inspect its contents
+            fith_cell len=extents[ptr];
+            for(fith_cell k=0;k<len;++k){
+                fith_cell cell=interp.bin[ptr+k];
+
+                // skip the next which is a literal/scalar
+                if(cell == (FLAG_MACHINE | MW_LIT) ||
+                   cell == (FLAG_MACHINE | MW_JZ) ||
+                   cell == (FLAG_MACHINE | MW_JMP)){
+                    ++k;
+                    continue;
+                }
+                
+                // ignore all builtins
+                // NB this means we still follow ptrs following MW_TICK
+                if((cell & FLAG_MACHINE) != 0){
+                    continue;
+                }
+
+                // strip leftover IMMED/HIDE bits
+                cell &= FLAG_ADDR;
+
+                // put it in the queue if not already seen
+                if(!live.count(cell)){
+                    todo.insert(cell);
+                }
+            }
+        }
+    }
+
+    // decide on new locations, i.e. reallocate space for live objects
+    fith_cell newhere=BINUSED;
+    ccmap remap;
+    for(csci i=live.begin();i!=live.end();++i){
+        fith_cell ptr=*i;
+        fith_cell len=extents[ptr];
+
+        remap[ptr]=newhere;
+        newhere+=len;
+    }
+
+    // allocate temporary buffer
+    fith_cell *tmpbuf=new fith_cell[newhere];
+    if(!tmpbuf){
+        cerr << "memory allocation failed" << endl;
+        state=EX_SEGV_CODE;
+        return;
+    }
+
+    // write in number of words consumed
+    tmpbuf[HEREATB]=newhere;
+
+    // relocate/relink everything in the live set
+    for(csci i=live.begin();i!=live.end();++i){
+        fith_cell from=*i;
+        fith_cell to=remap[from], len=extents[from];
+
+        // for each word in the remapped obj
+        for(fith_cell k=0;k<len;++k){
+            fith_cell cell=interp.bin[from+k];
+
+            // copy builtins directly
+            if((cell & FLAG_MACHINE) != 0){
+                tmpbuf[to+k]=cell;
+
+                cell &= FLAG_ADDR;
+                // copy also the following literal/scalar
+                if((cell == MW_LIT || cell == MW_JZ || cell == MW_JMP) && k+1 < len){
+                    ++k;
+                    tmpbuf[to+k]=interp.bin[from+k];
+                }
+            }
+            else{
+                // is a word pointer, use its new location
+                cell &= FLAG_ADDR;
+                if(remap.count(cell) == 0){
+                    cerr << "GC fails: unable to relocate " << cell << endl;
+                    state=EX_SEGV_CODE;
+                    return;
+                }
+                
+                tmpbuf[to+k]=remap[cell];
+            }
+        }
+    }
+
+    // copy relocated data back to the binary & free
+    for(fith_cell i=0;i<newhere;++i){
+        interp.bin[i]=tmpbuf[i];
+    }
+    delete[] tmpbuf;
+
+    // recreate the dictionary
+    interp.dictionary.clear();
+    interp.bootstrap(false);  // add opcodes
+
+    // add preserved functions
+    for(cmci i=remap.begin();i!=remap.end();++i){
+        interp.dictionary[rd[i->first]]=i->second;
+#ifndef NDEBUG
+        cerr << rd[i->first] << " => " << i->second << endl;
+#endif
+    }
+
+    // save result
+    mw_save();
+
+    // halt
+    state=EX_HALTED;
 }
 
 #endif
