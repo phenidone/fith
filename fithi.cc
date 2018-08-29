@@ -209,6 +209,7 @@ Interpreter::Context::Context(size_t _ip, fith_cell *_dstk, fith_cell *_rstk, si
     , is(_is), os(_os)
 #endif
 {
+    ip &= FLAG_ADDR;
 }
 
 Interpreter::EXEC_RESULT Interpreter::Context::execute()
@@ -1353,7 +1354,7 @@ string Interpreter::Context::opcode_to_string(fith_cell v)
         }
         else{
             ostringstream oss;
-            oss << v << ends;
+            oss << v;
             return oss.str();
         }
     }
