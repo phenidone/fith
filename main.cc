@@ -37,6 +37,7 @@ void bootstrap(Interpreter &interp)
         }
         else{
             cerr << "bootstrap failed" << endl;
+            ctx.printdump(cerr);
             exit(1);
         }
     }

@@ -59,6 +59,7 @@ const Interpreter::Context::machineword_t Interpreter::Context::builtin[Interpre
     &Interpreter::Context::mw_fromrs,
     &Interpreter::Context::mw_cpfromrs,
     &Interpreter::Context::mw_rdrop,
+    &Interpreter::Context::mw_rpick,
     &Interpreter::Context::mw_here,
     &Interpreter::Context::mw_syscall1,
     &Interpreter::Context::mw_syscall2,
@@ -133,13 +134,14 @@ const string Interpreter::opcodes[MW_INTERP_COUNT]={
     "R>",
     "R@",
     "RDROP",
+    "RPICK",
     "HERE",
     "SYSCALL1",
     "SYSCALL2",
     "SYSCALL3",
 
-    "!C",
-    "@C",
+    "C!",
+    "C@",
     ",",
     "KEY",
     "EMIT",
@@ -823,6 +825,21 @@ void Interpreter::Context::mw_rdrop()
     --rsp;
 }
 
+void Interpreter::Context::mw_rpick()
+{    
+    if(dsp < 1){
+        state=Interpreter::EX_DSTK_UNDER;
+        return;
+    }
+    fith_cell n=dstk[dsp-1];
+    if(n < 0 || rsp < size_t(1+n)){
+        state=Interpreter::EX_RSTK_UNDER;
+        return;
+    }
+    
+    dstk[dsp-1]=rstk[rsp-n-1];
+}
+
 void Interpreter::Context::mw_here()
 {
     if(dsp >= dsz){
@@ -890,7 +907,7 @@ void Interpreter::bootstrap(bool full)
         create(":", colon);
         compile(MW_WORD);
         compile(MW_HERE);
-        compile(MW_READCODE);  // HERE @C
+        compile(MW_READCODE);  // HERE C@
         compile(MW_CREATE);
         compile(MW_LATEST);
         compile(MW_HIDDEN);

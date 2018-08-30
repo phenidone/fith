@@ -15,32 +15,31 @@
 : ')' [ CHAR ) ] LITERAL ;
 : '"' [ CHAR " ] LITERAL ;
 
-
 : BEGIN IMMEDIATE
-  HERE @C
+  HERE C@
 ;
 
 : UNTIL IMMEDIATE
-  HERE @C -
+  HERE C@ -
   ' JZ ,
   ,
 ;
 
 : IF IMMEDIATE
   ' JZ ,
-  HERE @C
+  HERE C@
   0 ,
 ;
 
 : ENDIF IMMEDIATE
-  DUP HERE @C
+  DUP HERE C@
   SWAP - 1 +
-  SWAP !C
+  SWAP C!
 ;
 
 : ELSE IMMEDIATE
   ' JMP ,
-  HERE @C
+  HERE C@
   0 ,
   SWAP [COMPILE] ENDIF
 ;
@@ -107,7 +106,7 @@
 ( insert jump (tail recursion) to the beginning of current function )
 : TAIL IMMEDIATE
   LATEST FIND 0x1FFFFFFF &
-  HERE @C -                 ( compute offset )
+  HERE C@ -                 ( compute offset )
   ' JMP ,
   ,                         ( compile jump )
 ;
@@ -116,38 +115,12 @@
 : ?TAIL IMMEDIATE
   ' NOT ,                   ( invert TOS )
   LATEST FIND 0x1FFFFFFF &  ( recursion pointer, clear hidden/immed flags )
-  HERE @C  -                ( compute offset )
+  HERE C@  -                ( compute offset )
   ' JZ ,
   ,                         ( compile jump )
 ;
 
-( recursive factorial on stack )
-( n -- n! )
-: FACTORIAL
-  DUP IF
-    DUP 1 - RECURSE *
-  ELSE
-    DROP 1
-  ENDIF
-;
 
-( accum n -- accum*n n-1 )
-: _TAILFACTINNER
-  DUP ROT *     ( n accum*n )
-  SWAP 1 -      ( accum n-1 )
-  DUP ?TAIL     ( tail recursion when n != 0 )
-;
-
-
-( tail-recursed factorial as a loop )
-( n -- n! )
-: TAILFACT
-  1 SWAP         ( 1 n )
-  _TAILFACTINNER ( n! 0 )
-  DROP
-
-  HIDE _TAILFACTINNER
-;
 
 ( ***************************************************
   Compiler: flow control primitives
@@ -166,14 +139,14 @@
 
 : WHILE IMMEDIATE
   ' JZ ,    ( compile conditional branch )
-  HERE @C   ( target &offset )
+  HERE C@   ( target &offset )
   0 ,       ( offset=0 )
 ;
 
 ( end of a while-loop )
 ( target &off -- )
 : LOOP IMMEDIATE
-  HERE @C       ( target &offset &jmp )
+  HERE C@       ( target &offset &jmp )
   ' JMP ,       ( compile jmp )
   ROT SWAP -    ( &offset target-&jmp )
   ,             ( &offset )
@@ -388,4 +361,95 @@
   ELSE
     TELL        ( just print it )
   ENDIF
+;
+
+( ***************************************************
+  More compiler stuff that's dependent on strings
+  *************************************************** )
+
+
+: _CONSTBODY
+    HERE C@ CREATE
+    [COMPILE] LITERAL
+    ' EXIT ,
+;
+
+( create a function with the specified name, that returns the value that
+  was on TOS when CONSTANT was called )
+( val -- )
+: CONSTANT IMMEDIATE
+  WORD
+  STATE IF
+    ( compiling... preserve the name until runtime and bring it back as literal )
+    STRDUP [COMPILE] LITERAL
+    ' _CONSTBODY ,
+  ELSE
+    ( directly running: compile a new code-object )
+    _CONSTBODY
+  ENDIF
+
+  HIDE _CONSTBODY
+;
+
+( allot space for a named variable (1 word), and compile a word that produces
+  its value )
+: VARIABLE IMMEDIATE
+  1 ALLOT     ( ptr )
+  
+  WORD HERE C@ CREATE  ( create function that returns the value )
+  [COMPILE] LITERAL    ( pointer as literal )
+  ' @ ,                ( dereference )
+  ' EXIT ,
+;
+
+( overwrite a variable )
+( value -- )
+: TO IMMEDIATE
+  WORD DUP FIND     ( val word addr )
+  DUP -1 = IF
+    DROP            ( val word )
+    ." Unknown variable " TELL
+  ELSE
+    SWAP DROP       ( val addr )
+    1 + C@          ( val dptr )
+
+    STATE IF        ( compilation mode )
+      [COMPILE] LITERAL
+      ' ! ,
+    ELSE            ( immediate mode )
+      !             ( just write it )
+    ENDIF
+  ENDIF
+;
+
+( ***************************************************
+  Example code
+  *************************************************** )
+
+( recursive factorial on stack )
+( n -- n! )
+: FACTORIAL
+  DUP IF
+    DUP 1 - RECURSE *
+  ELSE
+    DROP 1
+  ENDIF
+;
+
+( accum n -- accum*n n-1 )
+: _TAILFACTINNER
+  DUP ROT *     ( n accum*n )
+  SWAP 1 -      ( accum n-1 )
+  DUP ?TAIL     ( tail recursion when n != 0 )
+;
+
+
+( tail-recursed factorial as a loop )
+( n -- n! )
+: TAILFACT
+  1 SWAP         ( 1 n )
+  _TAILFACTINNER ( n! 0 )
+  DROP
+
+  HIDE _TAILFACTINNER
 ;

@@ -148,6 +148,7 @@ public:
         MW_FROMRS,      ///< R>, move value from return stack to data stack
         MW_CPFROMRS,    ///< R@, copy value from return stack to data stack
         MW_RDROP,       ///< RDROP, drop value from return stack
+        MW_RPICK,       ///< RPICK, like PICK but copies a value from the return stack
         MW_HERE,        ///< get ptr (0) to cell that contains offset of first free cell in either space
         MW_SYSCALL1,    ///< 1-param syscall
         MW_SYSCALL2,    ///< 2-param syscall
@@ -271,6 +272,7 @@ public:
         void mw_fromrs();
         void mw_cpfromrs();
         void mw_rdrop();
+        void mw_rpick();
         void mw_here();
         void mw_syscall1();
         void mw_syscall2();
