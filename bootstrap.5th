@@ -3,7 +3,7 @@
 : FALSE 0 ;
 : NOT 0 = ;
 
-: SPACE 32 EMIT ;
+: SPACE 32 ;
 : CR 10 EMIT ;
 
 : CHAR WORD 1 + @ 0xFF & ;
@@ -300,6 +300,23 @@
   + @C              ( deref )
 ;
 
+( insert single char into a string )
+( char ptr off -- )
+: [!]
+  DUP 0 < IF        ( bounds check neg len )
+    DROP 2DROP    
+  ELSE
+    OVER STRLEN     ( CHAR PTR OFF LEN )
+    OVER            ( CHAR PTR OFF LEN OFF )
+    < IF            ( bounds check )
+      2DROP 2DROP
+    ELSE            ( CHAR PTR OFF )
+      SWAP 1 + CELLS +
+      !C             ( deref/write )
+    ENDIF
+  ENDIF
+;
+
 ( copy a string/block, a word at a time )
 ( ptr -- newptr )
 : STRDUP
@@ -426,4 +443,35 @@
   DROP
 
   HIDE _TAILFACTINNER
+;
+
+: 'a' [ CHAR a ] LITERAL ;
+: 'A' [ CHAR A ] LITERAL ;
+: 'z' [ CHAR z ] LITERAL ;
+: 'Z' [ CHAR Z ] LITERAL ;
+
+( STR -- STR )
+: ROT13
+  DUP STRLEN 0 SWAP ( str 0 len )
+  FOR               ( str )
+    DUP FOR_I [@]   ( str char )
+
+    DUP 'A' >=      ( str char char>=A )
+    OVER 'Z' <= &   ( str char A<=c<=Z )
+    IF
+        'A' -
+        13 + 26 MOD
+        'A' +
+    ENDIF
+
+    DUP 'a' >=      ( str char char>=A )
+    OVER 'z' <= &   ( str char A<=c<=Z )
+    IF
+        'a' -
+        13 + 26 MOD
+        'a' +
+    ENDIF
+
+    OVER FOR_I [!]  ( str; str[i]=char )
+  ROF
 ;
