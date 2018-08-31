@@ -450,6 +450,12 @@
 : 'z' [ CHAR z ] LITERAL ;
 : 'Z' [ CHAR Z ] LITERAL ;
 
+( CHAR BASE -- CHAR )
+: _ROT13C
+  SWAP OVER -        ( b c-b )
+  13 + 26 MOD + ( b+(c-b+13)%26 )
+;
+
 ( STR -- STR )
 : ROT13
   DUP STRLEN 0 SWAP ( str 0 len )
@@ -459,19 +465,17 @@
     DUP 'A' >=      ( str char char>=A )
     OVER 'Z' <= &   ( str char A<=c<=Z )
     IF
-        'A' -
-        13 + 26 MOD
-        'A' +
+        'A' _ROT13C
     ENDIF
 
     DUP 'a' >=      ( str char char>=A )
     OVER 'z' <= &   ( str char A<=c<=Z )
     IF
-        'a' -
-        13 + 26 MOD
-        'a' +
+        'a' _ROT13C
     ENDIF
 
     OVER FOR_I [!]  ( str; str[i]=char )
   ROF
+
+  HIDE _ROT13C
 ;
