@@ -214,13 +214,19 @@
   HERE !        ( ptr {*here=ptr+sz} )
 ;
 
+( convert cell offset into byte offset )
+: CELLS 2 << ;
+
+( convert byte offset into cell offset )
+: BYTES 2 >> ;
+
 ( round up to multiple of 4 (bytes -> cells) & divide by 4)
 : ALIGNED
-  3 + 2 >>
+  3 + BYTES
 ;
 ( round up strlen, plus room for nul terminator, to a cell count )
 : ALIGNEDZ
-  4 + 2 >>
+  4 + BYTES
 ;
 
 ( ***************************************************
@@ -243,68 +249,36 @@
   @ ALIGNEDZ 1 +
 ;
 
-( calculate bit-shift distance for getting/setting chars in cells )
-: BYTEOFF2BITOFF
-  3 & 3 <<
-;
-
-( select one char from within a 32-bit cell, assuming little-endian )
-( cell off -- char )
-: SELCHAR
-  BYTEOFF2BITOFF DUP ( cell bitoff bitoff )
-  0xFF SWAP <<      ( cell bitoff mask )
-  ROT &             ( bitoff cell&mask )
-  SWAP >>
-;
-
 ( save the current word while building a string )
-( ptr count accum -- ptr count accum=0 )
+( ptr count char -- ptr count++ )
 : _STRIMMSAVE 
-  2 PICK        ( ptr count accum ptr )
-  !             ( ptr count )
-  SWAP 1 + SWAP ( ++ptr count )
-  0             ( ptr count accum=0 )
-;
-
-( append a char to a string we're building )
-( ptr count accum key -- ptr count++ accum+ )
-: _STRIMMBODY 
-  2 PICK      ( ptr count accum key count )
-  BYTEOFF2BITOFF << | ( ptr count accum )
-
-  SWAP 1 + SWAP  ( ptr ++count accum )
-  OVER 3 & 0 = IF ( installed 4th char in a word, save it )
-    _STRIMMSAVE  ( ptr count accum )
-  ENDIF
+  2 PICK 1 + CELLS       ( ptr count char cptr )
+  2 PICK +               ( ptr count char cptr+count )
+  !C 1 +                 ( ptr count++ )
 ;
 
 ( string literal in the code.  stored little-endian in heap )
 ( compiles a pointer-literal into the output or leaves ptr on stack )
 : " IMMEDIATE
   KEY DROP      ( skip leading space )
-  HERE @        ( str )
-  DUP 1 + 0 DUP ( str ptr count accum )
+  HERE @ 0      ( str count)
   BEGIN
     KEY DUP '"' = NOT       ( while not end of string )
-  WHILE         ( str ptr count accum key )
-    _STRIMMBODY ( str ptr count accum )
+  WHILE         ( str count key )
+    _STRIMMSAVE ( str count++ )
   LOOP
-  DROP 0        ( str ptr count accum NUL )
-  _STRIMMBODY   ( append NUL )
+  DROP 0        ( str count NUL )
+  _STRIMMSAVE   ( str count )
 
-  OVER 3 & 0 > IF
-    _STRIMMSAVE   ( save the last word if not done )
-  ENDIF         ( str ptr count accum )
-  DROP SWAP     ( str count ptr )
-  HERE !        ( str count {*here=ptr} )
-  OVER !        ( str {*str=count, saves length} )
+  OVER !        ( str ; writes in strlen )
+  DUP DUP STRSIZE ( str str strsz )
+  + HERE !      ( str; *here=str+strsz )
 
   STATE IF
-    [COMPILE] LITERAL ( code that pushes the string location )
+    [COMPILE] LITERAL ( generate code that pushes the string location )
   ENDIF
   ( otherwise, just leave the string ptr on the stack )
 
-  HIDE _STRIMMBODY
   HIDE _STRIMMSAVE
 ;
 
@@ -321,12 +295,12 @@
      2DROP DROP
      0 EXIT         ( return NUL )
   ENDIF
-  DROP DUP 2 >>     ( PTR OFF OFF/4 )
-  ROT + 1 + @       ( off str[off/4+1] )
-  SWAP SELCHAR
+  DROP              ( ptr off )
+  SWAP 1 + CELLS    ( (ptr+1)*cells off )
+  + @C              ( deref )
 ;
 
-( copy a string/block )
+( copy a string/block, a word at a time )
 ( ptr -- newptr )
 : STRDUP
   DUP STRSIZE       ( ptr size )

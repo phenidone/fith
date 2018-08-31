@@ -143,7 +143,9 @@ public:
         MW_SRA,         ///< right shift arithmetic (treat as signed)
         MW_SRL,         ///< right shift logical
         MW_STORE,       ///< ! write to heap
+        MW_STOREC,      ///< !C write char to heap
         MW_READ,        ///< @ read from heap
+        MW_READC,       ///< @C read char from heap
         MW_TORS,        ///< >R, move value from data stack to return stack
         MW_FROMRS,      ///< R>, move value from return stack to data stack
         MW_CPFROMRS,    ///< R@, copy value from return stack to data stack
@@ -154,8 +156,8 @@ public:
         MW_SYSCALL2,    ///< 2-param syscall
         MW_SYSCALL3,    ///< 3-param syscall
 #ifdef FULLFITH
-        MW_STORECODE,   ///< write to code area
-        MW_READCODE,    ///< read from code area
+        MW_STORECODE,   ///< C! write to code area
+        MW_READCODE,    ///< C@ read from code area
         MW_COMMA,       ///< append to binary
 
         MW_KEY,         ///< wait and retrieve next keystroke
@@ -267,7 +269,9 @@ public:
         void mw_sra();
         void mw_srl();
         void mw_store();
+        void mw_storec();
         void mw_read();
+        void mw_readc();
         void mw_tors();
         void mw_fromrs();
         void mw_cpfromrs();

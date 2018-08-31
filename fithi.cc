@@ -54,7 +54,9 @@ const Interpreter::Context::machineword_t Interpreter::Context::builtin[Interpre
     &Interpreter::Context::mw_sra,
     &Interpreter::Context::mw_srl,
     &Interpreter::Context::mw_store,
+    &Interpreter::Context::mw_storec,
     &Interpreter::Context::mw_read,
+    &Interpreter::Context::mw_readc,
     &Interpreter::Context::mw_tors,
     &Interpreter::Context::mw_fromrs,
     &Interpreter::Context::mw_cpfromrs,
@@ -129,7 +131,9 @@ const string Interpreter::opcodes[MW_INTERP_COUNT]={
     "SRA",
     ">>",
     "!",
+    "!C",
     "@",
+    "@C",
     ">R",
     "R>",
     "R@",
@@ -759,6 +763,22 @@ void Interpreter::Context::mw_store()
     dsp-=2;
 }
 
+// ( val addr -- )
+void Interpreter::Context::mw_storec()
+{
+    if(dsp < 2){
+        state=Interpreter::EX_DSTK_UNDER;
+        return;
+    }
+    size_t ptr=(size_t) dstk[dsp-1];
+    if(ptr >= interp.heapsz*sizeof(fith_cell)){
+        state=Interpreter::EX_SEGV_DATA;
+        return;
+    }
+    ((char *) interp.heap)[ptr]=dstk[dsp-2] & 0xFF;
+    dsp-=2;
+}
+
 void Interpreter::Context::mw_read()
 {
     if(dsp < 1){
@@ -770,6 +790,19 @@ void Interpreter::Context::mw_read()
         state=Interpreter::EX_SEGV_DATA;
     }
     dstk[dsp-1]=interp.heap[ptr];
+}
+
+void Interpreter::Context::mw_readc()
+{
+    if(dsp < 1){
+        state=Interpreter::EX_DSTK_UNDER;
+        return;
+    }
+    size_t ptr=(size_t) dstk[dsp-1];
+    if(ptr >= interp.heapsz*sizeof(fith_cell)){
+        state=Interpreter::EX_SEGV_DATA;
+    }
+    dstk[dsp-1]=((char *) interp.heap)[ptr];
 }
 
 
