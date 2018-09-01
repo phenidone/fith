@@ -7,9 +7,10 @@
 : CR 10 EMIT ;
 
 : CHAR WORD 1 + @ 0xFF & ;
+: [COMPILE] IMMEDIATE WORD FIND , ;
 : LITERAL IMMEDIATE ' LIT , , ;
 : TICK IMMEDIATE ' ' , , ;
-: [COMPILE] IMMEDIATE WORD FIND , ;
+: TICKCOMMA IMMEDIATE [COMPILE] TICK ' , , ;
 
 : '(' [ CHAR ( ] LITERAL ;
 : ')' [ CHAR ) ] LITERAL ;
@@ -195,12 +196,38 @@
 ;
 
 
-
 ( get the iterator of the inner for-loop )
 ( -- i )
 : FOR_I IMMEDIATE
   ' R@ ,
 ;
+
+
+( preserve N stack contents, compiled as literals )
+( x1 .. xN N -- )
+: PRESERVE
+  DUP 0 SWAP        ( xN N 0 N )
+  FOR               ( xN N )
+    DUP FOR_I - PICK
+    [COMPILE] LITERAL
+  ROF
+  0 SWAP FOR
+    DROP
+  ROF
+;
+
+( everything after this point, until end-of-function, is to be
+  compiled into a separate anon word, and we generate code
+  that will compile a call to that anon word )
+: DOES> IMMEDIATE
+  HERE C@ 7 +       ( ptr to closure we're to compile )
+  [COMPILE] TICKCOMMA ( generate code to call it )
+  ' EXIT
+  [COMPILE] TICKCOMMA ( generate code to generate exit )
+  ' EXIT ,          ( end of the function we're in )
+  ]
+;
+
 
 ( ***************************************************
   Heap allocator
@@ -456,7 +483,8 @@
   13 + 26 MOD + ( b+(c-b+13)%26 )
 ;
 
-( STR -- STR )
+( rot13 in-place )
+( str -- str )
 : ROT13
   DUP STRLEN 0 SWAP ( str 0 len )
   FOR               ( str )
@@ -478,4 +506,15 @@
   ROF
 
   HIDE _ROT13C
+;
+
+
+( test generation of closures with DOES, by creating a
+  div/mul unit-conversion functor )
+( mul div -- )
+: UNITS
+  WORD HERE C@ CREATE
+
+  2 PRESERVE
+  DOES> */
 ;
