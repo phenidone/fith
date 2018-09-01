@@ -1017,6 +1017,7 @@ Interpreter::revdict_t Interpreter::invert_dict(bool builtins, bool addronly) co
 {
     revdict_t result;
 
+    // basic map-inversion
     for(dci i=dictionary.begin();i!=dictionary.end();++i){
         if(builtins || (i->second & FLAG_MACHINE) == 0){
             fith_cell addr=i->second;
@@ -1024,6 +1025,32 @@ Interpreter::revdict_t Interpreter::invert_dict(bool builtins, bool addronly) co
                 addr &= FLAG_ADDR;
             }
             result[addr]=i->first;
+        }
+    }
+
+    // scan the binary space, looking for jumps/calls
+    // that are to locations not in the dictionary, i.e.
+    // anonymous closures, and add them to the reverse-dict for
+    // relocation purposes
+    for(fith_cell i=BINUSED;i<bin[HEREATB];++i){
+        fith_cell cell=bin[i];
+        if(cell & FLAG_MACHINE){
+            cell &= FLAG_ADDR;
+
+            // skip following scalar
+            if(cell == MW_LIT || cell == MW_JMP || cell == MW_JZ){
+                ++i;
+                continue;
+            }
+        }
+        else{
+            cell &= FLAG_ADDR;
+            // destination unknown, add it
+            if(result.count(cell) == 0){
+                ostringstream oss;
+                oss << "_" << cell << "_";
+                result[cell]=oss.str();
+            }
         }
     }
 
@@ -1538,6 +1565,7 @@ void Interpreter::Context::mw_gc()
     // address-to-name mapping
     revdict_t rd=interp.invert_dict();
 
+
     // compute the size of each function, assuming each entry
     // in the dict is a whole function that ends at the next
     // dictionary entry
@@ -1569,7 +1597,7 @@ void Interpreter::Context::mw_gc()
     // put root in the search-list
     todo.insert(dstk[--dsp] & FLAG_ADDR);
 
-    // simple marking collector
+    // simple mark/sweep collector
     while(!todo.empty()){
         // pop
         csi i=todo.begin();
@@ -1641,6 +1669,7 @@ void Interpreter::Context::mw_gc()
     for(csci i=live.begin();i!=live.end();++i){
         fith_cell from=*i;
         fith_cell to=remap[from], len=extents[from];
+        string func=rd[from];
 
         // for each word in the remapped obj
         for(fith_cell k=0;k<len;++k){
@@ -1651,6 +1680,12 @@ void Interpreter::Context::mw_gc()
                 tmpbuf[to+k]=cell;
 
                 cell &= FLAG_ADDR;
+                
+                if(cell >= MW_STORECODE){
+                    os << "warn: GC retains extended instruction " << opcode_to_string(cell | FLAG_MACHINE)
+                       << " in " << func << endl;
+                }
+
                 // copy also the following literal/scalar
                 if((cell == MW_LIT || cell == MW_JZ || cell == MW_JMP) && k+1 < len){
                     ++k;

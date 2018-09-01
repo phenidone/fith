@@ -513,8 +513,33 @@
   div/mul unit-conversion functor )
 ( mul div -- )
 : UNITS
+
+  ( create named constructor for closure )
   WORD HERE C@ CREATE
 
-  2 PRESERVE
-  DOES> */
+  ( transfer 2 words from stack into closure )
+  2 PRESERVE DOES>
+
+  ( this is what happens inside the closure )
+  */
+;
+
+( another way of creating a variable.  less efficient because
+  the dereference is inside an anon word rather than inlined )
+( -- )
+: VARCLOSURE
+  WORD HERE C@ CREATE
+  1 ALLOT 1 PRESERVE
+  DOES>
+  @ 
+;
+
+( another way to do CONSTANT; again less efficient due to unnecessary
+  call/return, but it does work and is maybe a bit clearer.
+  The value PRESERVE'd in the closure is left on the stack when
+  the closure is invoked )
+( value -- )
+: CONSTCLOSURE
+  WORD HERE C@ CREATE
+  1 PRESERVE DOES>
 ;

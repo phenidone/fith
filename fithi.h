@@ -402,7 +402,7 @@ private:
      * but which need to exist to support the self-hosting compiler.
      */
     void bootstrap(bool full=true);
-    
+
     typedef std::map<std::string, fith_cell> dict_t;
     typedef std::map<fith_cell, std::string> revdict_t;
     typedef dict_t::iterator di;
