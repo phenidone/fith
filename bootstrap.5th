@@ -122,6 +122,64 @@
 ;
 
 
+( ***************************************************
+  Heap allocator
+  *************************************************** )
+
+( allocate words on the heap and return pointer to first one )
+( sz -- ptr )
+: ALLOT
+  HERE @ DUP    ( sz ptr ptr )
+  ROT +         ( ptr ptr+sz )
+  HERE !        ( ptr {*here=ptr+sz} )
+;
+
+( convert cell offset into byte offset )
+: CELLS 2 << ;
+
+( convert byte offset into cell offset )
+: BYTES 2 >> ;
+
+( round up to multiple of 4 (bytes -> cells) & divide by 4)
+: ALIGNED
+  3 + BYTES
+;
+( round up strlen, plus room for nul terminator, to a cell count )
+: ALIGNEDZ
+  4 + BYTES
+;
+
+( allot space for a named variable (1 word), and compile a word that produces
+  its value )
+: VARIABLE IMMEDIATE
+  1 ALLOT     ( ptr )
+  
+  WORD HERE C@ CREATE  ( create function that returns the value )
+  [COMPILE] LITERAL    ( pointer as literal )
+  ' @ ,                ( dereference )
+  ' EXIT ,
+;
+
+( overwrite a variable )
+( value -- )
+: TO IMMEDIATE
+  WORD DUP FIND     ( val word addr )
+  DUP -1 = IF
+    DROP            ( val word )
+    ( ." Unknown variable " TELL )
+    DROP
+  ELSE
+    SWAP DROP       ( val addr )
+    1 + C@          ( val dptr )
+
+    STATE IF        ( compilation mode )
+      [COMPILE] LITERAL
+      ' ! ,
+    ELSE            ( immediate mode )
+      !             ( just write it )
+    ENDIF
+  ENDIF
+;
 
 ( ***************************************************
   Compiler: flow control primitives
@@ -137,6 +195,22 @@
   implements while(cond){ body }
   because BEGIN was compiled first, we already have the
   loop target address on the stack )
+
+( keep track of how many items, e.g. locals, loop variables, etc
+  have been stashed on the return stack.  this allows us to generate
+  correct RPICK calls to fetch locals etc within a loop, for example,
+  and to unwind the return-stack properly at the end of a function )
+VARIABLE _RSDEPTH
+0 TO _RSDEPTH
+
+
+( re-define function-definition code to zero _RSDEPTH )
+: : 
+  WORD HERE C@ CREATE
+  LATEST HIDDEN
+  0 TO _RSDEPTH
+  ]
+;
 
 : WHILE IMMEDIATE
   ' JZ ,    ( compile conditional branch )
@@ -228,33 +302,6 @@
   ]
 ;
 
-
-( ***************************************************
-  Heap allocator
-  *************************************************** )
-
-( allocate words on the heap and return pointer to first one )
-( sz -- ptr )
-: ALLOT
-  HERE @ DUP    ( sz ptr ptr )
-  ROT +         ( ptr ptr+sz )
-  HERE !        ( ptr {*here=ptr+sz} )
-;
-
-( convert cell offset into byte offset )
-: CELLS 2 << ;
-
-( convert byte offset into cell offset )
-: BYTES 2 >> ;
-
-( round up to multiple of 4 (bytes -> cells) & divide by 4)
-: ALIGNED
-  3 + BYTES
-;
-( round up strlen, plus room for nul terminator, to a cell count )
-: ALIGNEDZ
-  4 + BYTES
-;
 
 ( ***************************************************
   string handling.  Strings are kept in the heap as a
@@ -377,7 +424,8 @@
   STATE IF
     ' TELL ,    ( gen code to print it )
   ELSE
-    TELL        ( just print it )
+    DUP TELL    ( print it )
+    HERE !      ( discard it from the data space, i.e. move HERE back )
   ENDIF
 ;
 
@@ -409,36 +457,6 @@
   HIDE _CONSTBODY
 ;
 
-( allot space for a named variable (1 word), and compile a word that produces
-  its value )
-: VARIABLE IMMEDIATE
-  1 ALLOT     ( ptr )
-  
-  WORD HERE C@ CREATE  ( create function that returns the value )
-  [COMPILE] LITERAL    ( pointer as literal )
-  ' @ ,                ( dereference )
-  ' EXIT ,
-;
-
-( overwrite a variable )
-( value -- )
-: TO IMMEDIATE
-  WORD DUP FIND     ( val word addr )
-  DUP -1 = IF
-    DROP            ( val word )
-    ." Unknown variable " TELL
-  ELSE
-    SWAP DROP       ( val addr )
-    1 + C@          ( val dptr )
-
-    STATE IF        ( compilation mode )
-      [COMPILE] LITERAL
-      ' ! ,
-    ELSE            ( immediate mode )
-      !             ( just write it )
-    ENDIF
-  ENDIF
-;
 
 ( ***************************************************
   Example code
@@ -543,3 +561,10 @@
   WORD HERE C@ CREATE
   1 PRESERVE DOES>
 ;
+
+
+( ***************************************************
+  Say we're done
+  *************************************************** )
+
+." FITH Bootstrap Complete" CR

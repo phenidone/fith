@@ -33,7 +33,6 @@ void bootstrap(Interpreter &interp)
         Interpreter::EXEC_RESULT res=ctx.execute();
         ifs.close();
         if(res == Interpreter::EX_SUCCESS){
-            cerr << "bootstrap complete" << endl;
         }
         else{
             cerr << "bootstrap failed" << endl;

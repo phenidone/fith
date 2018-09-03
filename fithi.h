@@ -1,61 +1,26 @@
 /** -*- C++ -*- */
 
+/*
+    Copyright (C) 2018 William Brodie-Tyrrell
+    william@brodie-tyrrell.org
+  
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 3 of the License, or
+    (at your option) any later version.
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of   
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>
+*/
+
 /**
  * This is a Forth-like interpreter, very loosely based on Jones-FORTH
  * but with the difference that it aims at memory safety for use on
  * embedded control systems.  It is also relatively portable (any 32-bit
  * architecture) and a lot slower because of the memory safety.
- *
- * In trying to make it safe, we lose:
- * - unrestricted memory read/write instructions
- * - self-modifying code, including callable compiler
- * - STDIN and therefore the ability to read WORDs, therefore
- * - there is no concept of IMMEDIATE/COMPILE mode
- * and we need to add:
- * - special read/write-within-heap instructions, separate from write-to-code
- * - an explicit Harvard-like data/code separation
- *
- * However, all those features come back with -DFULLFITH, allowing you
- * to run a normal interactive FITH (forth) shell including self-hosting
- * compiler.  The intention is that:
- * - a full session, including the compiler is run
- * - the memory contents are dumped to a couple of files
- * - a GC filters the dump files to contain only the code within
- *   the call-graph of specified entry-points (compiler goes away!)
- * - the GC'd binaries are loaded into an embedded system running the
- *   limited interpreter with no stdio and no writing to code-space
- *
- * That's an ugly workflow compared to normal Forth, but should result
- * in safer high-level programs that cannot so easily corrupt themselves,
- * and which do not actually need to perform compilation at runtime.
- *
- * The cell-size is 32 bits, and the address granularity is also 32 bits.
- *
- * The structure of each Word, in the executable binary, is just a list
- * of target Words to execute.  Because we don't allow the mixing of
- * machine and forth code (all the machine-code is in the interpreter,
- * not the loaded binary!):
- * - positive cells are offsets into the binary
- * - negative cells are machine-words (builtin) with FLAG_MACHINE (MSB) set 
- * - zero is EXIT(-from-word)
- * Because of this coding, there is no need for a DOCOL at the front
- * of each non-machine definition, instead we use a jump-table to branch
- * to the builtins.
- *
- * The program has a heap, but a new pair of data/call stacks
- * are initialised for each call/entry into the interpreter.  In typical
- * Forth fashion, the heap is a linear allocation with no credible means
- * of GC.  For long-running programs, the heap content should be initialised
- * at startup and no allocation should be performed during ongoing execution.
- *
- * The coding (unless -DFULLFITH) lacks STL etc because it is intended to be
- * portable to microcontrollers.  With -DFULLFITH, STL is used to implement
- * a few features like the dictionary, therefore the dictionary is not available
- * in the constrained mode.
- *
- * Strings are represented in the heap as a 1-cell length (number of bytes),
- * followed by the string data, NUL-terminated.  On the stack, they are passed
- * as the offset into the heap of the length field.
  *
  * @author william@brodie-tyrrell.org
  */
