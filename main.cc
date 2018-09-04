@@ -18,6 +18,8 @@ fith_cell heap[HEAPSZ];
 fith_cell dstk[STKSZ], cstk[STKSZ];
 size_t dsp=0, csp=0;
 
+#ifdef FULLFITH
+
 const string BOOTSTRAP_5TH="bootstrap.5th";
 
 void bootstrap(Interpreter &interp)
@@ -44,6 +46,8 @@ void bootstrap(Interpreter &interp)
         cerr << "could not load " << BOOTSTRAP_5TH << endl;
     }
 }
+
+#endif
 
 /**
  * read a saved binary image, for which the first word is the
@@ -76,6 +80,45 @@ void readblob(const string &fn, fith_cell *to, fith_cell alloc)
         }
     }
 }
+
+/**
+ * Dummy implementation which replaces stream IO!
+ */
+class IOSC : public SysCalls {
+public:
+    virtual fith_cell syscall1(fith_cell a)
+    {
+        char x;
+        
+        switch(a){
+        case 0:     // does KEY functionality
+            cin.get(x);
+            return (!cin) ? -1 : x;
+        default:
+            return -1;
+        }
+        return 0;
+    }
+    
+    virtual fith_cell syscall2(fith_cell a, fith_cell b)
+    {
+        switch(b){
+        case 0:      // does EMIT functionalitu
+            cout << char(a & 0xFF);
+            break;
+        default:
+            cerr << "SYSCALL2(" << a << ", " << b << ")" << endl;
+            return -1;
+        }
+        return 0;
+    }
+    
+    virtual fith_cell syscall3(fith_cell a, fith_cell b, fith_cell c)
+    {
+        return 0;
+    }
+
+};
 
 int main(int argc, char *argv[])
 {
@@ -115,28 +158,46 @@ int main(int argc, char *argv[])
             return 1;
         }
     }
-
+#ifndef FULLFITH
+    else{
+        // no command-line args, can't bootstrap
+        cerr << "embedded interpreter cannot bootstrap, use:" << endl
+             << "\t" << argv[0] << " -r file ENTRYPOINT" << endl
+             << "to load and run stored FITH code" << endl;
+        return 1;
+    }
+#endif
+    
     // create bootstrapped interpreter
     Interpreter interp(bin, BINSZ, heap, HEAPSZ, bs);
+    IOSC iosc;
     Interpreter::EXEC_RESULT res;
+
+    interp.setSyscalls(&iosc);
     
+#ifdef FULLFITH
     if(bs){
         // load+run boostrap.5th
         bootstrap(interp);
         entptr=interp.find("QUIT");        
     }
-
-
+#endif
+    
     // create new thread to run chosen code
     Interpreter::Context ctx(entptr, &dstk[0], &cstk[0], dsp, csp,
-                             STKSZ, STKSZ, interp,
-                             cin, cout);
+                             STKSZ, STKSZ, interp
+#ifdef FULLFITH
+                             , cin, cout
+#endif
+        );
     res=ctx.execute();        
 
     if(res != Interpreter::EX_SUCCESS){
+#ifdef FULLFITH
         ctx.printdump(cerr);
-        return 0;
+#else
+        cerr << endl << "Failed, status=" << res << endl;
+#endif        
     }
-   
     return 0;
 }

@@ -17,12 +17,12 @@
 */
 
 #include "fithi.h"
+#include <cstdlib>
 #ifdef FULLFITH
 #include <iostream>
 #include <iomanip>
 #include <fstream>
 #include <sstream>
-#include <cstdlib>
 #include <stdexcept>
 #include <set>
 #endif
@@ -202,6 +202,9 @@ const string Interpreter::states[EX_INTERP_COUNT]={
 Interpreter::Interpreter(fith_cell *_bin, size_t _binsz, fith_cell *_heap, size_t _heapsz, bool bs)
     : bin(_bin), heap(_heap), binsz(_binsz), heapsz(_heapsz)
 {
+    syscalls=NULL;
+    
+#ifdef FULLFITH
     compilestate=false;
 
     // need to initialise?
@@ -217,6 +220,12 @@ Interpreter::Interpreter(fith_cell *_bin, size_t _binsz, fith_cell *_heap, size_
         // generate a bunch of builtin functions
         bootstrap();
     }
+#endif    
+}
+
+void Interpreter::setSyscalls(SysCalls *sc)
+{
+    syscalls=sc;
 }
 
 Interpreter::Context::Context(size_t _ip, fith_cell *_dstk, fith_cell *_rstk, size_t &_dsp, size_t &_rsp,
@@ -286,6 +295,8 @@ void Interpreter::Context::set_ip(size_t _ip)
     ip=_ip;
 }
 
+#ifdef FULLFITH
+
 void Interpreter::Context::printdump(ostream &s)
 {
     s << "************************" << endl;
@@ -304,6 +315,7 @@ void Interpreter::Context::printdump(ostream &s)
     s << "************************" << endl;
 }
 
+#endif
 
 /*
  * Here be the implementations of the builtin words
@@ -907,7 +919,12 @@ void Interpreter::Context::mw_syscall1()
 #ifndef NDEBUG
     cerr << "syscall1(" << dstk[dsp-1] << ")" << endl;
 #endif
-    dstk[dsp-1]=0;
+    if(interp.syscalls){
+        dstk[dsp-1]=interp.syscalls->syscall1(dstk[dsp-1]);
+    }
+    else{
+        dstk[dsp-1]=0;
+    }
 }
 
 void Interpreter::Context::mw_syscall2()
@@ -919,8 +936,13 @@ void Interpreter::Context::mw_syscall2()
 #ifndef NDEBUG
     cerr << "syscall2(" << dstk[dsp-2] << ", " << dstk[dsp-1] << ")" << endl;
 #endif
-    dsp--;
-    dstk[dsp-1]=0;
+    fith_cell b=dstk[--dsp], a=dstk[dsp-1];
+    if(interp.syscalls){
+        dstk[dsp-1]=interp.syscalls->syscall2(a, b);
+    }
+    else{
+        dstk[dsp-1]=0;
+    }
 }
 
 void Interpreter::Context::mw_syscall3()
@@ -932,8 +954,13 @@ void Interpreter::Context::mw_syscall3()
 #ifndef NDEBUG
     cerr << "syscall3(" << dstk[dsp-3] << ", " << dstk[dsp-2] << ", " << dstk[dsp-1] << ")" << endl;
 #endif
-    dsp-=2;
-    dstk[dsp-1]=0;
+    fith_cell c=dstk[--dsp],  b=dstk[--dsp], a=dstk[dsp-1];
+    if(interp.syscalls){
+        dstk[dsp-1]=interp.syscalls->syscall3(a, b, c);
+    }
+    else{
+        dstk[dsp-1]=0;
+    }
 }
 
 

@@ -37,7 +37,18 @@
 namespace fith {
 
 typedef int fith_cell;
-    
+
+/**
+ * External interface for handling system-calls;
+ * must supply one of these when embedding an interpreter
+ */
+class SysCalls {
+public:
+    virtual fith_cell syscall1(fith_cell a) =0;
+    virtual fith_cell syscall2(fith_cell a, fith_cell b) =0;
+    virtual fith_cell syscall3(fith_cell a, fith_cell b, fith_cell c) =0;    
+};
+
 class Interpreter {
 public: 
 
@@ -271,10 +282,11 @@ public:
         void mw_dump();
         void mw_save();
         void mw_gc();
-#endif
 
         std::string opcode_to_string(fith_cell v);
         
+#endif
+
         /// machine words are kept here as member-function pointers
         typedef void (Context::*machineword_t)();
 
@@ -347,6 +359,12 @@ public:
     const std::string &latest() const;
     
 #endif
+
+    /**
+     * Provide syscall implementation
+     */
+    void setSyscalls(SysCalls *sc);
+    
 private:
     
     /// get a C-string from the TOS ptr; NULL if invalid
@@ -355,7 +373,15 @@ private:
     fith_cell *bin;
     fith_cell *heap;
     std::size_t binsz, heapsz;
+    SysCalls *syscalls;
 
+    // we encode flags in the top three bits,
+    // which means we have only 29-bit (*4 byte) = 2GB usable address space.
+    static const fith_cell FLAG_MACHINE=  0x80000000;     ///< is a machine opcode
+    static const fith_cell FLAG_IMMED=    0x40000000;     ///< indicates an immediate word
+    static const fith_cell FLAG_HIDE=     0x20000000;     ///< indicates a hidden word
+    static const fith_cell FLAG_ADDR=     0x1FFFFFFF;     ///< mask to obtain address from dict
+    
     // first cell of both bin and heap specify how much space is
     // allocated in each, therefore starts at 1.
     
@@ -381,14 +407,7 @@ private:
      * @param addronly erase flag bits to leave pure addresses
      */
     revdict_t invert_dict(bool builtins=false, bool addronly=true) const;
-    
-    // we encode flags in the top three bits,
-    // which means we have only 29-bit (*4 byte) = 2GB usable address space.
-    static const fith_cell FLAG_MACHINE=  0x80000000;     ///< is a machine opcode
-    static const fith_cell FLAG_IMMED=    0x40000000;     ///< indicates an immediate word
-    static const fith_cell FLAG_HIDE=     0x20000000;     ///< indicates a hidden word
-    static const fith_cell FLAG_ADDR=     0x1FFFFFFF;     ///< mask to obtain address from dict
-    
+        
     /// machine-word (opcode) names
     static const std::string opcodes[MW_INTERP_COUNT];
     /// execution state names

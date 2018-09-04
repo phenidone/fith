@@ -562,6 +562,21 @@ VARIABLE _RSDEPTH
   1 PRESERVE DOES>
 ;
 
+: SCEMIT
+  0 SYSCALL2 DROP
+;
+
+( print a string )
+( ptr -- )
+: SCTELL
+  DUP
+  STRLEN 0 SWAP     ( ptr 0 len )
+  FOR               ( loop through length )
+    DUP FOR_I [@] SCEMIT ( print a char)
+  ROF
+  DROP              ( drop the ptr)
+;
+
 
 ( ***************************************************
   Say we're done
