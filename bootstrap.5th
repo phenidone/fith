@@ -99,6 +99,12 @@
   WORD HIDDEN
 ;
 
+( include a file )
+: INCLUDE IMMEDIATE
+  WORD _INCLUDE
+  HIDE _INCLUDE
+;
+
 ( insert call to the function we're compiling )
 : RECURSE IMMEDIATE
   LATEST FIND 0x1FFFFFFF & ,
@@ -429,6 +435,7 @@ VARIABLE _RSDEPTH
   ENDIF
 ;
 
+
 ( ***************************************************
   More compiler stuff that's dependent on strings
   *************************************************** )
@@ -456,127 +463,6 @@ VARIABLE _RSDEPTH
 
   HIDE _CONSTBODY
 ;
-
-
-( ***************************************************
-  Example code
-  *************************************************** )
-
-( recursive factorial on stack )
-( n -- n! )
-: FACTORIAL
-  DUP IF
-    DUP 1 - RECURSE *
-  ELSE
-    DROP 1
-  ENDIF
-;
-
-( accum n -- accum*n n-1 )
-: _TAILFACTINNER
-  DUP ROT *     ( n accum*n )
-  SWAP 1 -      ( accum n-1 )
-  DUP ?TAIL     ( tail recursion when n != 0 )
-;
-
-
-( tail-recursed factorial as a loop )
-( n -- n! )
-: TAILFACT
-  1 SWAP         ( 1 n )
-  _TAILFACTINNER ( n! 0 )
-  DROP
-
-  HIDE _TAILFACTINNER
-;
-
-: 'a' [ CHAR a ] LITERAL ;
-: 'A' [ CHAR A ] LITERAL ;
-: 'z' [ CHAR z ] LITERAL ;
-: 'Z' [ CHAR Z ] LITERAL ;
-
-( CHAR BASE -- CHAR )
-: _ROT13C
-  SWAP OVER -        ( b c-b )
-  13 + 26 MOD + ( b+(c-b+13)%26 )
-;
-
-( rot13 in-place )
-( str -- str )
-: ROT13
-  DUP STRLEN 0 SWAP ( str 0 len )
-  FOR               ( str )
-    DUP FOR_I [@]   ( str char )
-
-    DUP 'A' >=      ( str char char>=A )
-    OVER 'Z' <= &   ( str char A<=c<=Z )
-    IF
-        'A' _ROT13C
-    ENDIF
-
-    DUP 'a' >=      ( str char char>=A )
-    OVER 'z' <= &   ( str char A<=c<=Z )
-    IF
-        'a' _ROT13C
-    ENDIF
-
-    OVER FOR_I [!]  ( str; str[i]=char )
-  ROF
-
-  HIDE _ROT13C
-;
-
-
-( test generation of closures with DOES, by creating a
-  div/mul unit-conversion functor )
-( mul div -- )
-: UNITS
-
-  ( create named constructor for closure )
-  WORD HERE C@ CREATE
-
-  ( transfer 2 words from stack into closure )
-  2 PRESERVE DOES>
-
-  ( this is what happens inside the closure )
-  */
-;
-
-( another way of creating a variable.  less efficient because
-  the dereference is inside an anon word rather than inlined )
-( -- )
-: VARCLOSURE
-  WORD HERE C@ CREATE
-  1 ALLOT 1 PRESERVE
-  DOES>
-  @ 
-;
-
-( another way to do CONSTANT; again less efficient due to unnecessary
-  call/return, but it does work and is maybe a bit clearer.
-  The value PRESERVE'd in the closure is left on the stack when
-  the closure is invoked )
-( value -- )
-: CONSTCLOSURE
-  WORD HERE C@ CREATE
-  1 PRESERVE DOES>
-;
-
-: SCEMIT
-  0 SYSCALL2 DROP
-;
-
-( print a string )
-( ptr -- )
-: SCTELL
-  DUP
-  STRLEN 0 SWAP     ( ptr 0 len )
-  FOR               ( loop through length )
-    DUP FOR_I [@] SCEMIT ( print a char)
-  ROF
-  DROP              ( drop the ptr)
-;
-
 
 ( ***************************************************
   Say we're done

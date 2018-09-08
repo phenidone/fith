@@ -10,7 +10,7 @@
 using namespace fith;
 using namespace std;
 
-const size_t BINSZ=1024;
+const size_t BINSZ=65536;
 const size_t HEAPSZ=128;
 const size_t STKSZ=128;
 fith_cell bin[BINSZ];
@@ -30,7 +30,7 @@ void bootstrap(Interpreter &interp)
         // create thread
         Interpreter::Context ctx(interp.find("QUIT"), &dstk[0], &cstk[0], dsp, csp,
                                  STKSZ, STKSZ, interp,
-                                 ifs, cout);
+                                 &ifs, &cout);
 
         Interpreter::EXEC_RESULT res=ctx.execute();
         ifs.close();
@@ -187,7 +187,7 @@ int main(int argc, char *argv[])
     Interpreter::Context ctx(entptr, &dstk[0], &cstk[0], dsp, csp,
                              STKSZ, STKSZ, interp
 #ifdef FULLFITH
-                             , cin, cout
+                             , &cin, &cout
 #endif
         );
     res=ctx.execute();        

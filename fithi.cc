@@ -25,6 +25,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <set>
+#include <cassert>
 #endif
 
 using namespace std;
@@ -52,8 +53,6 @@ const Interpreter::Context::machineword_t Interpreter::Context::builtin[Interpre
     &Interpreter::Context::mw_le,
     &Interpreter::Context::mw_ge,
     &Interpreter::Context::mw_eq,
-    &Interpreter::Context::mw_max,
-    &Interpreter::Context::mw_min,
     &Interpreter::Context::mw_dup,
     &Interpreter::Context::mw_dupnz,
     &Interpreter::Context::mw_drop,
@@ -103,7 +102,8 @@ const Interpreter::Context::machineword_t Interpreter::Context::builtin[Interpre
     &Interpreter::Context::mw_interpret,
     &Interpreter::Context::mw_dump,
     &Interpreter::Context::mw_save,
-    &Interpreter::Context::mw_gc
+    &Interpreter::Context::mw_gc,
+    &Interpreter::Context::mw_include
 #endif
 };
 
@@ -129,8 +129,6 @@ const string Interpreter::opcodes[MW_INTERP_COUNT]={
     "<=",
     ">=",
     "=",
-    "MAX",
-    "MIN",
     "DUP",
     "?DUP",
     "DROP",
@@ -180,7 +178,8 @@ const string Interpreter::opcodes[MW_INTERP_COUNT]={
     "INTERPRET",
     "DUMP",
     "SAVE",
-    "GC"
+    "GC",
+    "_INCLUDE"
 };
 
 const string Interpreter::states[EX_INTERP_COUNT]={
@@ -231,7 +230,7 @@ void Interpreter::setSyscalls(SysCalls *sc)
 Interpreter::Context::Context(size_t _ip, fith_cell *_dstk, fith_cell *_rstk, size_t &_dsp, size_t &_rsp,
                               size_t _dsz, size_t _rsz, Interpreter &_interp
 #ifdef FULLFITH
-                              , istream &_is, ostream &_os
+                              , istream *_is, ostream *_os
 #endif
                               )
     : ip(_ip), dsp(_dsp), rsp(_rsp), state(EX_RUNNING), dstk(_dstk), rstk(_rstk), dsz(_dsz), rsz(_rsz),
@@ -241,6 +240,21 @@ Interpreter::Context::Context(size_t _ip, fith_cell *_dstk, fith_cell *_rstk, si
 #endif
 {
     ip &= FLAG_ADDR;
+#ifdef FULLFITH
+    assert(is);
+    assert(os);
+#endif
+}
+
+Interpreter::Context::~Context()
+{
+#ifdef FULLFITH
+    // close all the open INCLUDEs
+    while(!iostack.empty()){
+        delete iostack.top();
+        iostack.pop();
+    }
+#endif
 }
 
 Interpreter::EXEC_RESULT Interpreter::Context::execute()
@@ -578,24 +592,6 @@ void Interpreter::Context::mw_eq()
     }
     --dsp;
     dstk[dsp-1]=(dstk[dsp-1] == dstk[dsp]) ? 1 : 0;
-}
-
-void Interpreter::Context::mw_max()
-{
-    if(dsp < 2){
-        state=Interpreter::EX_DSTK_UNDER;
-    }
-    --dsp;
-    dstk[dsp-1]=(dstk[dsp-1] > dstk[dsp]) ? dstk[dsp-1] : dstk[dsp];
-}
-
-void Interpreter::Context::mw_min()
-{
-    if(dsp < 2){
-        state=Interpreter::EX_DSTK_UNDER;
-    }
-    --dsp;
-    dstk[dsp-1]=(dstk[dsp-1] < dstk[dsp]) ? dstk[dsp-1] : dstk[dsp];
 }
 
 void Interpreter::Context::mw_dup()
@@ -973,7 +969,7 @@ void Interpreter::bootstrap(bool full)
     for(int i=0;i<MW_INTERP_COUNT;++i){
         create(opcodes[i], i | FLAG_MACHINE);
     }
-    // make some immediate
+    // make some words immediate
     dictionary["IMMEDIATE"] |= FLAG_IMMED;
     dictionary["["] |= FLAG_IMMED;
 
@@ -1159,9 +1155,22 @@ void Interpreter::Context::mw_key()
     }
 
     char c;
-    is.get(c);  // blocking read 1 char
-    if(!is){
+    is->get(c);  // blocking read 1 char
+    if(!*is){
         // fail, eof, etc
+
+        if(!iostack.empty()){
+            // finished with an INCLUDE, close/pop
+            delete is;
+            is=iostack.top();
+            iostack.pop();
+
+            // try again, recursively
+            mw_key();
+            return;
+        }
+
+        // no INCLUDEs to pop; indicate failure
         dstk[dsp++]=-1;
     }
     else{
@@ -1176,7 +1185,7 @@ void Interpreter::Context::mw_emit()
         state=Interpreter::EX_DSTK_UNDER;
         return;
     }
-    os.put((char)(dstk[--dsp] & 0xFF));
+    os->put((char)(dstk[--dsp] & 0xFF));
 }
 
 void Interpreter::Context::mw_word()
@@ -1187,10 +1196,22 @@ void Interpreter::Context::mw_word()
     }
     
     string str;
-    is >> str; // it's nice to cheat...
+    *is >> str; // it's nice to cheat...
 
-    if(!is){
+    if(!*is){
         // EOF/fail
+        if(!iostack.empty()){
+            // finished with an INCLUDE, close it and go back to prev file
+            delete is;
+            is=iostack.top();
+            iostack.pop();
+
+            // try again, recursively
+            mw_word();
+            return;
+        }
+        
+        // nothing left
         interp.heap[WORDLENAT]=-1;
         ((char *) &interp.heap[WORDBUFAT])[0]='\0';
     }
@@ -1222,7 +1243,7 @@ void Interpreter::Context::mw_eof()
         return;
     }
 
-    dstk[dsp++]=is.good() ? 0 : 1;
+    dstk[dsp++]=is->good() ? 0 : 1;
 }
 
 void Interpreter::Context::mw_number()
@@ -1259,7 +1280,7 @@ void Interpreter::Context::mw_dot()
         state=EX_DSTK_UNDER;
         return;
     }
-    os << dstk[--dsp] << ' ';
+    *os << dstk[--dsp] << ' ';
 }
 
 void Interpreter::Context::mw_create()
@@ -1412,7 +1433,7 @@ void Interpreter::Context::mw_interpret()
 
         // hidden word; don't allow it to be compiled/run
         if((wordptr & FLAG_HIDE) != 0){
-            os << "Unrecognised word " << ((char *) &interp.heap[WORDBUFAT]) << endl;
+            *os << "Unrecognised word " << ((char *) &interp.heap[WORDBUFAT]) << endl;
             --dsp;
             return;
         }
@@ -1449,7 +1470,7 @@ void Interpreter::Context::mw_interpret()
         else{
             // parse failure; whinge
             dsp-=2;            
-            os << "Unrecognised word " << ((char *) &interp.heap[WORDBUFAT]) << endl;
+            *os << "Unrecognised word " << ((char *) &interp.heap[WORDBUFAT]) << endl;
             return;
         }
     }
@@ -1464,7 +1485,9 @@ string Interpreter::Context::opcode_to_string(fith_cell v)
             return opcodes[v];
         }
         else{
-            return "BAD OPCODE";
+            ostringstream oss;
+            oss << "BAD OPCODE " << v;
+            return oss.str();
         }
     }
     else{
@@ -1580,7 +1603,7 @@ void Interpreter::Context::mw_save()
         }
         ofs.close();
 
-        os << "SAVE success" << endl;
+        *os << "SAVE success" << endl;
     }
     catch(runtime_error &e){
         cerr << e.what() << endl;
@@ -1725,8 +1748,8 @@ void Interpreter::Context::mw_gc()
                 cell &= FLAG_ADDR;
                 
                 if(cell >= MW_STORECODE){
-                    os << "warn: GC retains extended instruction " << opcode_to_string(cell | FLAG_MACHINE)
-                       << " in " << func << endl;
+                    *os << "warn: GC retains extended instruction " << opcode_to_string(cell | FLAG_MACHINE)
+                        << " in " << func << endl;
                 }
 
                 // copy also the following literal/scalar
@@ -1774,7 +1797,33 @@ void Interpreter::Context::mw_gc()
     state=EX_HALTED;
 }
 
-#endif
+void Interpreter::Context::mw_include()
+{
+    if(dsp < 1){
+        state=EX_DSTK_UNDER;
+        return;
+    }
+    
+    const char *fn=interp.get_string(dstk[--dsp]);
+
+    if(!fn){
+        *os << "invalid filename for INCLUDE" << endl;
+        return;
+    }
+
+    ifstream *ifs=new ifstream(fn, ios::in);
+    if(!ifs || !*ifs){
+        *os << "INCLUDE fails to open " << fn << endl;
+        delete ifs;
+        return;
+    }
+
+    // remember the old input-stream and select the new one for WORD/KEY/EOF processing
+    iostack.push(is);
+    is=ifs;
+}
+
+#endif  // FULLFITH
 
 
 };

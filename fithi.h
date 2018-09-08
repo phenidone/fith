@@ -32,6 +32,7 @@
 #include <string>
 #include <iostream>
 #include <map>
+#include <stack>
 #endif
 
 namespace fith {
@@ -101,8 +102,6 @@ public:
         MW_LE,          ///< less than or equal
         MW_GE,          ///< greater than or equal
         MW_EQ,          ///< equal
-        MW_MAX,         ///< 2-arg maximum
-        MW_MIN,         ///< 2-arg minimum
         MW_DUP,         ///< duplicate
         MW_DUPNZ,       ///< duplicate if non-zero
         MW_DROP,        ///< drop
@@ -157,6 +156,8 @@ public:
         MW_DUMP,        ///< print out a dump of the code space
         MW_SAVE,        ///< save a binary containing code and data spaces and a memory map
         MW_GC,          ///< garbage-collect and relink the binary from a nominated single entry point
+
+        MW_INCLUDE,     ///< select() a different file (until EOF), then return back to the previous
 #endif            
         MW_INTERP_COUNT        ///< number of machine-words defined
     };
@@ -183,10 +184,15 @@ public:
         Context(std::size_t _ip, fith_cell *_dstk, fith_cell *_rstk, std::size_t &_dsp, std::size_t &_rsp,
                 std::size_t _dsz, std::size_t _rsz, Interpreter &_interp
 #ifdef FULLFITH
-                , std::istream &_is, std::ostream &_os
+                , std::istream *_is, std::ostream *_os
 #endif
             );
 
+        /**
+         * destructor cleans up any stack of as-yet-unclosed INCLUDEd files
+         */
+        ~Context();
+        
         /**
          * Run the interpreter until the called word returns or something breaks.
          */
@@ -227,8 +233,6 @@ public:
         void mw_le();
         void mw_ge();
         void mw_eq();
-        void mw_max();
-        void mw_min();
         void mw_dup();
         void mw_dupnz();
         void mw_drop();
@@ -282,6 +286,7 @@ public:
         void mw_dump();
         void mw_save();
         void mw_gc();
+        void mw_include();
 
         std::string opcode_to_string(fith_cell v);
         
@@ -305,8 +310,13 @@ public:
         Interpreter &interp;
 
 #ifdef FULLFITH
-        std::istream &is;
-        std::ostream &os;
+        typedef std::stack<std::istream *> iostack_t;
+
+        std::istream *is;
+        std::ostream *os;
+
+        /// stack of input-streams being processed by nested INCLUDE
+        iostack_t iostack;
 #endif
     };
 

@@ -1,0 +1,18 @@
+
+( maximum of two numbers )
+( a b -- a<b?b:a )
+: MAX
+  2DUP < IF
+    SWAP
+  ENDIF
+  DROP
+;
+
+( minimum of two numbers )
+( a b -- a>b?b:a )
+: MIN
+  2DUP > IF
+    SWAP
+  ENDIF
+  DROP
+;
