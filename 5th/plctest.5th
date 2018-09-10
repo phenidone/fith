@@ -1,0 +1,36 @@
+
+( ***************************************************
+  Trivial test of a PLC program.
+
+  It has one input and one output port.  Bit zero is
+  copied from input to output, and bit one is toggled
+  on the leading edge of bit zero.
+  *************************************************** )
+
+
+INCLUDE 5th/plc.5th
+
+VARIABLE STATE
+0 TO STATE
+
+( for GPIO change events )
+: ONCHANGE
+  0 GPIO_READ 1 &   ( get GPIO-0 )
+  DUP STATE ~ & IF  ( rising edge GPIO-0 )
+    STATE 2 ^ TO STATE  ( toggle GPIO-1 )
+  ENDIF
+  STATE 1 ~ & | TO STATE ( record new state )
+  STATE 0 GPIO_WRITE     ( update output )
+;
+
+( boot: initialise and install change handler )
+: MAIN
+  STATE 0 GPIO_WRITE
+  0 ' ONCHANGE GPIO_HANDLER
+;
+
+( GC/save code to a binary )
+: DOGC
+  ' MAIN GC
+;
+DOGC

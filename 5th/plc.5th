@@ -1,0 +1,46 @@
+
+
+( ***************************************************
+  Basic functions for PLC IO - this is a library which
+  provides a bunch of helpers, implemented in terms
+  of SYSCALLs.
+  *************************************************** )
+
+( table of key constants used in syscalls )
+0x1000 LITERATOR SC2_GPIO_READ
+0x1001 LITERATOR SC3_GPIO_WRITE
+0x1010 LITERATOR SC3_GPIO_HANDLER
+0x2010 LITERATOR SC3_TIMER_PERIODIC
+0x2011 LITERATOR SC3_TIMER_ONESHOT
+
+( read from a GPIO port )
+( PORT -- VALUE )
+: GPIO_READ
+  SC2_GPIO_READ SYSCALL2
+;
+
+( write to a GPIO port )
+( VALUE PORT -- )
+: GPIO_WRITE
+  SC3_GPIO_WRITE SYSCALL3
+  DROP
+;
+
+( install a callback for GPIO change )
+( PORT HANDLER -- SUCCESS )
+: GPIO_HANDLER
+  SC3_GPIO_HANDLER SYSCALL3
+;
+
+
+( set the periodic-timer period (milliseconds) and handler )
+( PERIOD HANDLER -- SUCCESS )
+: TIMER_PERIODIC
+  SC3_TIMER_PERIODIC SYSCALL3
+;
+
+( set a one-shot timer period (milliseconds) and handler )
+( PERIOD HANDLER -- SUCCESS )
+: TIMER_ONESHOT
+  SC3_TIMER_ONESHOT SYSCALL3
+;

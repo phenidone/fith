@@ -308,6 +308,18 @@ VARIABLE _RSDEPTH
   ]
 ;
 
+( create a compiler function, which results in code generation
+  of a literal wherever the function appears )
+( use it like this:
+      20 LITERATOR TWENTY
+      : SOMEFUNCTION TWENTY + ;
+  and you get an inline constant of 20 in SOMEFUNCTION, no call overhead
+)
+: LITERATOR
+  WORD HERE C@ CREATE [COMPILE] IMMEDIATE
+  1 PRESERVE DOES>
+  [COMPILE] LITERAL
+;
 
 ( ***************************************************
   string handling.  Strings are kept in the heap as a

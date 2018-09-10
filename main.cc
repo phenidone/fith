@@ -193,7 +193,6 @@ int main(int argc, char *argv[])
 #endif
         );
     res=ctx.execute();
-    cerr << "status " << res << endl;
 
     if(res != Interpreter::EX_SUCCESS){
 #ifdef FULLFITH

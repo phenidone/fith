@@ -249,7 +249,6 @@ Interpreter::Context::Context(size_t _ip, fith_cell *_dstk, fith_cell *_rstk, si
 Interpreter::Context::~Context()
 {
 #ifdef FULLFITH
-    cerr << "~Context" << endl;
     // close all the open INCLUDEs
     while(!iostack.empty()){
         delete is;
@@ -1166,7 +1165,6 @@ void Interpreter::Context::mw_key()
             delete is;
             is=iostack.top();
             iostack.pop();
-            cerr << "POP (key)" << endl;
             
             // try again, recursively
             mw_key();
@@ -1208,7 +1206,6 @@ void Interpreter::Context::mw_word()
             delete is;
             is=iostack.top();
             iostack.pop();
-            cerr << "POP (word)" << endl;
 
             // try again, recursively
             mw_word();
@@ -1254,7 +1251,6 @@ void Interpreter::Context::mw_eof()
             delete is;
             is=iostack.top();
             iostack.pop();
-            cerr << "POP (eof)" << endl;
 
             // try again, recursively
             mw_eof();
@@ -1840,7 +1836,6 @@ void Interpreter::Context::mw_include()
     // remember the old input-stream and select the new one for WORD/KEY/EOF processing
     iostack.push(is);
     is=ifs;
-    cerr << "PUSH" << endl;
 }
 
 #endif  // FULLFITH
