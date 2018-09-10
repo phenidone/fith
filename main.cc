@@ -49,6 +49,7 @@ void bootstrap(Interpreter &interp)
 
 #endif
 
+
 /**
  * read a saved binary image, for which the first word is the
  * total number of words in the image.
@@ -82,7 +83,8 @@ void readblob(const string &fn, fith_cell *to, fith_cell alloc)
 }
 
 /**
- * Dummy implementation which replaces stream IO!
+ * Dummy implementation which replaces stream IO, and does some things
+ * which are required in a PLC simulator
  */
 class IOSC : public SysCalls {
 public:
@@ -190,7 +192,8 @@ int main(int argc, char *argv[])
                              , &cin, &cout
 #endif
         );
-    res=ctx.execute();        
+    res=ctx.execute();
+    cerr << "status " << res << endl;
 
     if(res != Interpreter::EX_SUCCESS){
 #ifdef FULLFITH
