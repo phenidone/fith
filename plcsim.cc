@@ -95,9 +95,9 @@ public:
         
         switch(a){
         case SC1_TIME_UNIX:
-            return fith_cell(dt.tv_sec);
+            return fith_cell(now.tv_sec);
         case SC1_TIME_EPOCH:
-            return fith_cell(dt.tv_sec-EPOCH);
+            return fith_cell(now.tv_sec-EPOCH);
         case SC1_TIME_MSBOOT:            
             timersub(&now, &t_boot, &dt);
             return 1000*dt.tv_sec+dt.tv_usec/1000;
