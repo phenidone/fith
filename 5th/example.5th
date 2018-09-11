@@ -30,10 +30,10 @@
   HIDE _TAILFACTINNER
 ;
 
-: 'a' [ CHAR a ] LITERAL ;
-: 'A' [ CHAR A ] LITERAL ;
-: 'z' [ CHAR z ] LITERAL ;
-: 'Z' [ CHAR Z ] LITERAL ;
+CHAR a DEFINE 'a'
+CHAR A DEFINE 'A'
+CHAR z DEFINE 'z'
+CHAR Z DEFINE 'Z'
 
 ( CHAR BASE -- CHAR )
 : _ROT13C
@@ -44,9 +44,9 @@
 ( rot13 in-place )
 ( str -- str )
 : ROT13
-  DUP STRLEN 0 SWAP ( str 0 len )
-  FOR               ( str )
-    DUP FOR_I [@]   ( str char )
+  DUP STRLEN        ( str len )
+  0 FOR             ( str )
+    DUP I [@]       ( str char )
 
     DUP 'A' >=      ( str char char>=A )
     OVER 'Z' <= &   ( str char A<=c<=Z )
@@ -60,7 +60,7 @@
         'a' _ROT13C
     ENDIF
 
-    OVER FOR_I [!]  ( str; str[i]=char )
+    OVER I [!]       ( str; str[i]=char )
   ROF
 
   HIDE _ROT13C
@@ -87,19 +87,10 @@
 ( -- )
 : VARCLOSURE
   WORD HERE C@ CREATE
-  1 ALLOT 1 PRESERVE
-  DOES>
-  @ 
-;
-
-( another way to do CONSTANT; again less efficient due to unnecessary
-  call/return, but it does work and is maybe a bit clearer.
-  The value PRESERVE'd in the closure is left on the stack when
-  the closure is invoked )
-( value -- )
-: CONSTCLOSURE
-  WORD HERE C@ CREATE
+  1 ALLOT
+  DUP 0xFF SWAP !
   1 PRESERVE DOES>
+  @ 
 ;
 
 : SCEMIT
@@ -110,9 +101,9 @@
 ( ptr -- )
 : SCTELL
   DUP
-  STRLEN 0 SWAP     ( ptr 0 len )
-  FOR               ( loop through length )
-    DUP FOR_I [@] SCEMIT ( print a char)
+  STRLEN            ( ptr len )
+  0 FOR             ( loop through length )
+    DUP I [@] SCEMIT ( print a char)
   ROF
   DROP              ( drop the ptr)
 ;

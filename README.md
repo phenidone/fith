@@ -185,9 +185,9 @@ ROT13, performing string access, iteration and selection:
 ( rot13 in-place, case-preserving )
 ( str -- str )
 : ROT13
-  DUP STRLEN 0 SWAP ( str 0 len )
-  FOR               ( str )
-    DUP FOR_I [@]   ( str char )
+  DUP STRLEN        ( str len )
+  0 FOR             ( str )
+    DUP I [@]       ( str char )
 
     DUP 'A' >=      ( str char char>=A )
     OVER 'Z' <= &   ( str char A<=c<=Z )
@@ -201,7 +201,7 @@ ROT13, performing string access, iteration and selection:
         'a' _ROT13C
     ENDIF
 
-    OVER FOR_I [!]  ( str; str[i]=char )
+    OVER I [!]      ( str; str[i]=char )
   ROF
 
   HIDE _ROT13C
@@ -247,7 +247,7 @@ and run it:
 ```
 william@gytha:~/git/code/fith$ ./fithi 
 FITH Bootstrap Complete
-: TEST 1 8 FOR FOR_I FACTORIAL . ROF CR ;
+: TEST 8 1 FOR I FACTORIAL . ROF CR ;
 : DOGC ' TEST GC ;
 DOGC
 warn: GC retains extended instruction EMIT in CR

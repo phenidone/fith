@@ -8,13 +8,13 @@
 
 : CHAR WORD 1 + @ 0xFF & ;
 : [COMPILE] IMMEDIATE WORD FIND , ;
-: LITERAL IMMEDIATE ' LIT , , ;
+: LITERAL ' LIT , , ;
 : TICK IMMEDIATE ' ' , , ;
-: TICKCOMMA IMMEDIATE [COMPILE] TICK ' , , ;
+: TICKCOMMA [COMPILE] TICK ' , , ;
 
-: '(' [ CHAR ( ] LITERAL ;
-: ')' [ CHAR ) ] LITERAL ;
-: '"' [ CHAR " ] LITERAL ;
+: '(' [ CHAR ( LITERAL ] ;
+: ')' [ CHAR ) LITERAL ] ;
+: '"' [ CHAR " LITERAL ] ;
 
 : BEGIN IMMEDIATE
   HERE C@
@@ -158,10 +158,10 @@
 ( allot space for a named variable (1 word), and compile a word that produces
   its value )
 : VARIABLE IMMEDIATE
-  1 ALLOT     ( ptr )
-  
+  1 ALLOT           ( ptr )
+  DUP 0 SWAP !      ( initialise to zero )
   WORD HERE C@ CREATE  ( create function that returns the value )
-  [COMPILE] LITERAL    ( pointer as literal )
+  LITERAL              ( pointer as literal )
   ' @ ,                ( dereference )
   ' EXIT ,
 ;
@@ -179,7 +179,7 @@
     1 + C@          ( val dptr )
 
     STATE IF        ( compilation mode )
-      [COMPILE] LITERAL
+      LITERAL
       ' ! ,
     ELSE            ( immediate mode )
       !             ( just write it )
@@ -241,9 +241,10 @@ VARIABLE _RSDEPTH
   (just like in C) as a while loop, and we insert
   the initialisation, condition, continuation and
   termination code here )
-( runtime: start limit -- )
+( runtime: limit start -- )
 : FOR IMMEDIATE
-  ' >R DUP , ,  ( R: limit start )
+  ' SWAP ,      ( start limit ) 
+  ' >R DUP , ,  ( R: limit pos=start )
   [COMPILE] BEGIN
     ' R> ,
     ' R@ ,      ( pos limit )
@@ -258,7 +259,7 @@ VARIABLE _RSDEPTH
   code, put the loop-end in, then compile cleanup )
 : ROF IMMEDIATE
   ' R> ,            ( pos from retstack )
-  1 [COMPILE] LITERAL ' + ,   ( pos+1 )
+  1 LITERAL ' + ,   ( pos+1 )
   ' >R ,            ( pos to retstack )
   [COMPILE] LOOP
   ' RDROP DUP , ,   ( pos, limit off retstack )
@@ -278,7 +279,7 @@ VARIABLE _RSDEPTH
 
 ( get the iterator of the inner for-loop )
 ( -- i )
-: FOR_I IMMEDIATE
+: I IMMEDIATE
   ' R@ ,
 ;
 
@@ -286,12 +287,12 @@ VARIABLE _RSDEPTH
 ( preserve N stack contents, compiled as literals )
 ( x1 .. xN N -- )
 : PRESERVE
-  DUP 0 SWAP        ( xN N 0 N )
-  FOR               ( xN N )
-    DUP FOR_I - PICK
-    [COMPILE] LITERAL
+  DUP                 ( xN N N )
+  0 FOR               ( xN N )
+    DUP I - PICK
+    LITERAL
   ROF
-  0 SWAP FOR
+  0 FOR
     DROP
   ROF
 ;
@@ -301,24 +302,31 @@ VARIABLE _RSDEPTH
   that will compile a call to that anon word )
 : DOES> IMMEDIATE
   HERE C@ 7 +       ( ptr to closure we're to compile )
-  [COMPILE] TICKCOMMA ( generate code to call it )
+  TICKCOMMA         ( generate code to call it )
   ' EXIT
-  [COMPILE] TICKCOMMA ( generate code to generate exit )
+  TICKCOMMA         ( generate code to generate exit )
   ' EXIT ,          ( end of the function we're in )
   ]
 ;
 
 ( create a compiler function, which results in code generation
-  of a literal wherever the function appears )
-( use it like this:
-      20 LITERATOR TWENTY
+  of a literal wherever the function appears
+  Use it like this:
+      20 DEFINE TWENTY
       : SOMEFUNCTION TWENTY + ;
-  and you get an inline constant of 20 in SOMEFUNCTION, no call overhead
+  and you get an inline literal 20 in SOMEFUNCTION with no call overhead.
+
+  When called in immediate mode, the closure leaves its constant on the stack
 )
-: LITERATOR
-  WORD HERE C@ CREATE [COMPILE] IMMEDIATE
-  1 PRESERVE DOES>
-  [COMPILE] LITERAL
+: DEFINE
+  WORD HERE C@ CREATE   ( create named function )
+  [COMPILE] IMMEDIATE   ( mark the new function as immediate )
+
+  1 PRESERVE DOES>      ( preserve one input param into closure )
+
+  STATE IF
+    LITERAL             ( if invoked in compile-mode, generate literal )
+  ENDIF                 ( else just leave it on the stack )
 ;
 
 ( ***************************************************
@@ -367,7 +375,7 @@ VARIABLE _RSDEPTH
   + HERE !      ( str; *here=str+strsz )
 
   STATE IF
-    [COMPILE] LITERAL ( generate code that pushes the string location )
+    LITERAL ( generate code that pushes the string location )
   ENDIF
   ( otherwise, just leave the string ptr on the stack )
 
@@ -415,8 +423,8 @@ VARIABLE _RSDEPTH
   DUP STRSIZE       ( ptr size )
   DUP ALLOT         ( ptr size newptr)
   DUP -4 ROLL       ( newptr ptr size newptr )
-  0 ROT             ( newptr ptr newptr 0 size )
-  FOR               ( newptr ptr newptr )
+  SWAP              ( newptr ptr newptr size )
+  0 FOR             ( newptr ptr newptr )
     SWAP DUP @      ( newptr newptr ptr val )
     2 PICK !        ( newptr newptr ptr {*newptr=val} )
     1 + SWAP 1 +    ( newptr ptr+1 newptr+1 )
@@ -428,9 +436,9 @@ VARIABLE _RSDEPTH
 ( ptr -- )
 : TELL
   DUP
-  STRLEN 0 SWAP     ( ptr 0 len )
-  FOR               ( loop through length )
-    DUP FOR_I [@] EMIT ( print a char)
+  STRLEN            ( ptr len )
+  0 FOR             ( loop through length )
+    DUP I [@] EMIT ( print a char)
   ROF
   DROP              ( drop the ptr)
 ;
@@ -447,34 +455,6 @@ VARIABLE _RSDEPTH
   ENDIF
 ;
 
-
-( ***************************************************
-  More compiler stuff that's dependent on strings
-  *************************************************** )
-
-
-: _CONSTBODY
-    HERE C@ CREATE
-    [COMPILE] LITERAL
-    ' EXIT ,
-;
-
-( create a function with the specified name, that returns the value that
-  was on TOS when CONSTANT was called )
-( val -- )
-: CONSTANT IMMEDIATE
-  WORD
-  STATE IF
-    ( compiling... preserve the name until runtime and bring it back as literal )
-    STRDUP [COMPILE] LITERAL
-    ' _CONSTBODY ,
-  ELSE
-    ( directly running: compile a new code-object )
-    _CONSTBODY
-  ENDIF
-
-  HIDE _CONSTBODY
-;
 
 ( ***************************************************
   Say we're done
