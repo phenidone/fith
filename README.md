@@ -83,7 +83,7 @@ Context, which contains a pair of stacks and stack-pointers.
 
 ## Compiler
 
-In the full system (-DFULLFITH when compiling), all opcodes are enabled.  There is a bootstrap
+In the full system (-DFULLFITH when compiling: fithi), all opcodes are enabled.  There is a bootstrap
 function which creates the beginning of the REPL: colon, semicolon and QUIT.  On initialisation
 of a full system, the interpreter first reads and executes bootstrap.5th which contains everything
 needed to bootstrap a working compiler from the builtin opcodes.
@@ -113,7 +113,7 @@ been purged unless it was referenced by the entry-point.
 
 ## Embedded Runtime
 
-In embedded mode (without -DFULLFITH), no bootstrap is performed.  Instead, code and data spaces
+In embedded mode (without -DFULLFITH: fithe), no bootstrap is performed.  Instead, code and data spaces
 are directly loaded into memory, the map-file is consulted to find the entry-point and execution begins there.
 
 In embedded mode, "risky" opcodes are disabled:
@@ -134,6 +134,37 @@ The main function (entry-point / root of GC) should install handlers (function p
 In turn, the system will invoke execution at those entry points when the events occur.  Because the main function
 references all of the various event-handler functions, those functions and their call graphs will
 be preserved through GC.
+
+## PLC Engine
+
+The PLC simulator (fithp) is a unix-based simulation of a trivial PLC with two GPIO ports (32 bits in, 32 bits out)
+and a single periodic timer.  It runs the embedded FITH runtime and makes the PLC functionality (GPIO read/write
+and timer manipulations) available through the SYSCALL instructions.
+
+See plcsim.cc for the driver program, 5th/plc.5th for interface definitions and 5th/plctest.5th for
+a trivial demonstration that shows GPIO manipulations and the use of timer events.  While running it, press
+digit keys on the keyboard to toggle input pins.
+
+To compile and run the plctest demo:
+
+```
+william@gytha:~/git/code/fith$ ./fithi < 5th/plctest.5th
+FITH Bootstrap Complete
+SAVE success
+************************
+context state = Halted
+IP = 824
+D:
+R: 17
+************************
+william@gytha:~/git/code/fith$ ./fithp -r fith MAIN
+IN 00000000000000000000000000000000 OUT 00000000000000000000000000000000
+IN 00000000000000000000000000000000 OUT 00000000000000000000000100000000
+IN 00000000000000000000000000000000 OUT 00000000000000000000001000000000
+IN 00000000000000000000000000000000 OUT 00000000000000000000001100000000
+IN 00000000000000000000000000000000 OUT 00000000000000000000010000000000
+^C
+```
 
 # Example Code
 
