@@ -5,6 +5,10 @@
   It has one input and one output port.  Bit zero is
   copied from input to output, and bit one is toggled
   on the leading edge of bit zero.
+
+  On the periodic timer, we increment a counter and
+  insert its lower 24 bits into the upper 24 bits of
+  the GPIO output.
   *************************************************** )
 
 
@@ -13,16 +17,20 @@ INCLUDE 5th/plc.5th
 VARIABLE STATE
 VARIABLE COUNTER
 
+0 DEFINE INPORT
+0 DEFINE OUTPORT
+100 DEFINE PERIOD
+
 ( save value on stack to STATE and write it to the GPIO port )
 ( value -- )
 : WRITE
   DUP TO STATE
-  0 GPIO_WRITE
+  OUTPORT GPIO_WRITE
 ;
 
 ( for GPIO change events )
 : ONCHANGE
-  0 GPIO_READ 1 &   ( get GPIO-0 )
+  INPORT GPIO_READ 1 &   ( get GPIO-0 )
   DUP STATE ~ & IF  ( rising edge GPIO-0 )
     STATE 2 ^ TO STATE  ( toggle GPIO-1 )
   ENDIF
@@ -30,7 +38,7 @@ VARIABLE COUNTER
   WRITE
 ;
 
-( get timer events, inc counter, put in upper bits of output )
+( get timer events; inc counter, put in upper bits of output )
 : ONTIMER
   COUNTER 1 + DUP TO COUNTER  ( ++counter )
   0x00FFFFFF & 8 <<           ( keep bottom bits and shift up )
@@ -40,9 +48,9 @@ VARIABLE COUNTER
 
 ( boot: initialise and install change handler )
 : MAIN
-  STATE 0 GPIO_WRITE            ( clear GPIO )
-  0 ' ONCHANGE GPIO_HANDLER     ( install GPIO change handler )
-  100 ' ONTIMER TIMER_PERIODIC ( start timer, 0.1s period )
+  0 WRITE                     ( clear GPIO )
+  INPORT ' ONCHANGE GPIO_HANDLER     ( install GPIO change handler )
+  PERIOD ' ONTIMER TIMER_PERIODIC ( start timer, 0.1s period )
 ;
 
 ( GC/save code to a binary )
