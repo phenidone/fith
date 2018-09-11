@@ -11,7 +11,14 @@
 INCLUDE 5th/plc.5th
 
 VARIABLE STATE
-0 TO STATE
+VARIABLE COUNTER
+
+( save value on stack to STATE and write it to the GPIO port )
+( value -- )
+: WRITE
+  DUP TO STATE
+  0 GPIO_WRITE
+;
 
 ( for GPIO change events )
 : ONCHANGE
@@ -19,14 +26,23 @@ VARIABLE STATE
   DUP STATE ~ & IF  ( rising edge GPIO-0 )
     STATE 2 ^ TO STATE  ( toggle GPIO-1 )
   ENDIF
-  STATE 1 ~ & | TO STATE ( record new state )
-  STATE 0 GPIO_WRITE     ( update output )
+  STATE 1 ~ & |     ( combine with upper bits of state )
+  WRITE
+;
+
+( get timer events, inc counter, put in upper bits of output )
+: ONTIMER
+  COUNTER 1 + DUP TO COUNTER  ( ++counter )
+  0x00FFFFFF & 8 <<           ( keep bottom bits and shift up )
+  STATE 0xFF & |              ( combine into state )
+  WRITE
 ;
 
 ( boot: initialise and install change handler )
 : MAIN
-  STATE 0 GPIO_WRITE
-  0 ' ONCHANGE GPIO_HANDLER
+  STATE 0 GPIO_WRITE            ( clear GPIO )
+  0 ' ONCHANGE GPIO_HANDLER     ( install GPIO change handler )
+  100 ' ONTIMER TIMER_PERIODIC ( start timer, 0.1s period )
 ;
 
 ( GC/save code to a binary )

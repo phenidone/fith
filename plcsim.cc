@@ -7,6 +7,8 @@
 #include <fstream>
 #include <string>
 #include <stdexcept>
+#include <sys/time.h>
+#include <sys/signal.h>
 
 using namespace fith;
 using namespace std;
@@ -53,12 +55,13 @@ void readblob(const string &fn, fith_cell *to, fith_cell alloc)
 
 
 /**
- * Dummy implementation which does PLC stuff.
+ * Syscalls implementation that does PLC stuff.
  *
- * Allows a single on-change handler, single periodic-timer
- * and single oneshot-timer.
+ * Allows a single on-change handler and single periodic-timer.
+ * 
+ * Has a finite set of both input and output ports; 
+ * really intended for use with just 1 each way.
  */
-template<int inp, int outp>
 class PLCSC : public SysCalls {
 public:
 
@@ -68,16 +71,39 @@ public:
     {
         gpio_handler=0;
         periodic_handler=0;
-        oneshot_handler=0;
         
-        for(size_t i=0;i<inp;++i)
+        for(size_t i=0;i<INPORTS;++i)
             inputs[i]=0;
-        for(size_t i=0;i<outp;++i)
+        for(size_t i=0;i<OUTPORTS;++i)
             outputs[i]=0;
+
+        gettimeofday(&t_boot, NULL);
+        me=this;
     }
 
+    ~PLCSC()
+    {
+        if(me == this)
+            me=NULL;
+    }
+    
     virtual fith_cell syscall1(fith_cell a)
     {
+        struct timeval now, dt;
+
+        gettimeofday(&now, NULL);
+        
+        switch(a){
+        case SC1_TIME_UNIX:
+            return fith_cell(dt.tv_sec);
+        case SC1_TIME_EPOCH:
+            return fith_cell(dt.tv_sec-EPOCH);
+        case SC1_TIME_MSBOOT:            
+            timersub(&now, &t_boot, &dt);
+            return 1000*dt.tv_sec+dt.tv_usec/1000;
+        default:
+            break;
+        }
         return -1;
     }
     
@@ -85,7 +111,7 @@ public:
     {
         switch(b){
         case SC2_GPIO_READ:
-            if(a >= 0 && a < inp){
+            if(a >= 0 && size_t(a) < INPORTS){
                 return inputs[a];
             }
             break;
@@ -99,7 +125,7 @@ public:
     {
         switch(c){
         case SC3_GPIO_WRITE:
-            if(b >= 0 && b < outp){
+            if(b >= 0 && size_t(b) < OUTPORTS){
                 outputs[b]=a;
                 refreshView();
                 return 0;
@@ -109,7 +135,19 @@ public:
             gpio_handler=b;
             return 0;
         case SC3_TIMER_PERIODIC:
-        case SC3_TIMER_ONESHOT:
+        {
+            struct itimerval tv;
+            tv.it_value.tv_sec=a/1000;
+            tv.it_value.tv_usec=(a % 1000)*1000;
+            tv.it_interval=tv.it_value;
+
+            periodic_handler=b;
+            if(setitimer(ITIMER_REAL, &tv, NULL) < 0){
+                periodic_handler=0;
+                return -1;
+            }
+            return 0;
+        }
         default:
             break;
         }
@@ -121,7 +159,7 @@ public:
      */
     void changeInput(int which, fith_cell value)
     {
-        if(which < 0 || which >= inp)
+        if(which < 0 || size_t(which) >= INPORTS)
             return;
         
         inputs[which]=value;
@@ -136,7 +174,7 @@ public:
 
     fith_cell getInput(int which)
     {
-        if(which < 0 || which >= inp)
+        if(which < 0 || size_t(which) >= INPORTS)
             return -1;
         
         return inputs[which];
@@ -144,11 +182,23 @@ public:
 
     fith_cell getOutput(int which)
     {
-        if(which < 0 || which >= outp)
+        if(which < 0 || size_t(which) >= OUTPORTS)
             return -1;
         
         return outputs[which];
     }
+
+    /**
+     * timer event, run a thread if not already doing so
+     */
+    void ontimer()
+    {
+        if(periodic_handler){
+            call(periodic_handler, 0);
+        }
+    }
+
+    static PLCSC *me;
 
 private:
 
@@ -186,25 +236,46 @@ private:
         }
 
     }
+
+    static const size_t INPORTS=1, OUTPORTS=1;
     
     static const fith_cell SC2_GPIO_READ=0x1000;
     static const fith_cell SC3_GPIO_WRITE=0x1001;
     static const fith_cell SC3_GPIO_HANDLER=0x1010;
 
+    static const fith_cell SC1_TIME_UNIX=0x2000;
+    static const fith_cell SC1_TIME_EPOCH=0x2001;
+    static const fith_cell SC1_TIME_MSBOOT=0x2002;
     static const fith_cell SC3_TIMER_PERIODIC=0x2010;
-    static const fith_cell SC3_TIMER_ONESHOT=0x2011;
 
     Interpreter &interp;
     
-    fith_cell gpio_handler, periodic_handler, oneshot_handler;
-    fith_cell inputs[inp];
-    fith_cell outputs[outp];
+    fith_cell gpio_handler, periodic_handler;
+    fith_cell inputs[INPORTS];
+    fith_cell outputs[OUTPORTS];
+
+    struct timeval t_boot;
+    static const time_t EPOCH=946684800;        ///< year 2000, 30 year offset from Unix
 };
+
+PLCSC *PLCSC::me=NULL;
+
+void ontimer(int sig)
+{
+    signal(sig, ontimer);       // reinstall
+
+    if(PLCSC::me){
+        PLCSC::me->ontimer();
+    }
+}
+
 
 int main(int argc, char *argv[])
 {
     fith_cell entptr=-1;
     bool bs=true;
+
+    signal(SIGALRM, ontimer);
     
     if(argc > 3 && strcmp(argv[1], "-r") == 0){
         string load=argv[2];
@@ -242,7 +313,7 @@ int main(int argc, char *argv[])
     
     // create bootstrapped interpreter
     Interpreter interp(bin, BINSZ, heap, HEAPSZ, bs);
-    PLCSC<1,1> plcsc(interp);
+    PLCSC plcsc(interp);    
     Interpreter::EXEC_RESULT res;
 
     interp.setSyscalls(&plcsc);

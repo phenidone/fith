@@ -10,8 +10,10 @@
 0x1000 DEFINE SC2_GPIO_READ
 0x1001 DEFINE SC3_GPIO_WRITE
 0x1010 DEFINE SC3_GPIO_HANDLER
+0x2000 DEFINE SC1_TIME_UNIX
+0x2001 DEFINE SC1_TIME_EPOCH
+0x2002 DEFINE SC1_TIME_MSBOOT
 0x2010 DEFINE SC3_TIMER_PERIODIC
-0x2011 DEFINE SC3_TIMER_ONESHOT
 
 ( read from a GPIO port )
 ( PORT -- VALUE )
@@ -32,6 +34,23 @@
   SC3_GPIO_HANDLER SYSCALL3
 ;
 
+( get UTC unix time, seconds since 1970 )
+( -- time )
+: TIME_UNIX
+  SC1_TIME_UNIX SYSCALL1
+;
+
+( get seconds since a (TBD) epoch probably 2010 )
+( -- time )
+: TIME_EPOCH
+  SC1_TIME_EPOCH SYSCALL1
+;
+
+( get system-time, milliseconds since boot (wrap 24 days), monotonic )
+( -- time )
+: TIME_MSBOOT
+  SC1_TIME_MSBOOT SYSCALL1
+;
 
 ( set the periodic-timer period (milliseconds) and handler )
 ( PERIOD HANDLER -- SUCCESS )
@@ -39,8 +58,3 @@
   SC3_TIMER_PERIODIC SYSCALL3
 ;
 
-( set a one-shot timer period (milliseconds) and handler )
-( PERIOD HANDLER -- SUCCESS )
-: TIMER_ONESHOT
-  SC3_TIMER_ONESHOT SYSCALL3
-;
