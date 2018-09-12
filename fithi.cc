@@ -174,7 +174,7 @@ const string Interpreter::opcodes[MW_INTERP_COUNT]={
     "HIDDEN",
     "[",
     "]",
-    "STATE",
+    "[COMPILESTATE]",
     "INTERPRET",
     "DUMP",
     "SAVE",

@@ -7,10 +7,11 @@
 : CR 10 EMIT ;
 
 : CHAR WORD 1 + @ 0xFF & ;
+: [FUNCPTR] IMMEDIATE WORD FIND ;
 : [COMPILE] IMMEDIATE WORD FIND , ;
 : LITERAL ' LIT , , ;
-: TICK IMMEDIATE ' ' , , ;
-: TICKCOMMA [COMPILE] TICK ' , , ;
+: TICK ' ' , , ;
+: TICKCOMMA TICK ' , , ;
 
 : '(' [ CHAR ( LITERAL ] ;
 : ')' [ CHAR ) LITERAL ] ;
@@ -178,7 +179,7 @@
     SWAP DROP       ( val addr )
     1 + C@          ( val dptr )
 
-    STATE IF        ( compilation mode )
+    [COMPILESTATE] IF        ( compilation mode )
       LITERAL
       ' ! ,
     ELSE            ( immediate mode )
@@ -297,6 +298,19 @@ VARIABLE _RSDEPTH
   ROF
 ;
 
+( preserve N stack contents, compiled as ' (function ptrs) )
+( x1 .. xN N -- )
+: PRESERVEFUNC
+  DUP                 ( xN N N )
+  0 FOR               ( xN N )
+    DUP I - PICK
+    TICK
+  ROF
+  0 FOR
+    DROP
+  ROF
+;
+
 ( everything after this point, until end-of-function, is to be
   compiled into a separate anon word, and we generate code
   that will compile a call to that anon word )
@@ -324,7 +338,7 @@ VARIABLE _RSDEPTH
 
   1 PRESERVE DOES>      ( preserve one input param into closure )
 
-  STATE IF
+  [COMPILESTATE] IF
     LITERAL             ( if invoked in compile-mode, generate literal )
   ENDIF                 ( else just leave it on the stack )
 ;
@@ -374,7 +388,7 @@ VARIABLE _RSDEPTH
   DUP DUP STRSIZE ( str str strsz )
   + HERE !      ( str; *here=str+strsz )
 
-  STATE IF
+  [COMPILESTATE] IF
     LITERAL ( generate code that pushes the string location )
   ENDIF
   ( otherwise, just leave the string ptr on the stack )
@@ -447,7 +461,7 @@ VARIABLE _RSDEPTH
 : ." IMMEDIATE
   [COMPILE] "   ( get the string, either on stack or compiled )
 
-  STATE IF
+  [COMPILESTATE] IF
     ' TELL ,    ( gen code to print it )
   ELSE
     DUP TELL    ( print it )

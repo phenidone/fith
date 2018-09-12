@@ -93,6 +93,18 @@ CHAR Z DEFINE 'Z'
   @ 
 ;
 
+( closure which is the binding of a single parameter to another function )
+( param func -- )
+: BIND1
+  WORD HERE C@ CREATE
+  SWAP
+  1 PRESERVE
+  1 PRESERVEFUNC
+  DOES>
+
+  EXECUTE
+;
+
 : SCEMIT
   0 SYSCALL2 DROP
 ;
