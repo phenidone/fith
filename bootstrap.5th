@@ -423,7 +423,7 @@ VARIABLE _RSDEPTH
     OVER STRLEN     ( CHAR PTR OFF LEN )
     OVER            ( CHAR PTR OFF LEN OFF )
     < IF            ( bounds check )
-      2DROP 2DROP
+      DROP 2DROP
     ELSE            ( CHAR PTR OFF )
       SWAP 1 + CELLS +
       !C             ( deref/write )
