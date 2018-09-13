@@ -54,7 +54,4 @@ VARIABLE COUNTER
 ;
 
 ( GC/save code to a binary )
-: DOGC
-  ' MAIN GC
-;
-DOGC
+[FUNCPTR] MAIN GC
