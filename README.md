@@ -88,8 +88,8 @@ function which creates the beginning of the REPL: colon, semicolon and QUIT.  On
 of a full system, the interpreter first reads and executes bootstrap.5th which contains everything
 needed to bootstrap a working compiler from the builtin opcodes.
 
-The compiler is quite Forth-like but not identical to Forth.  Some of the words, e.g. FOR, have
-arguments in a different order, and the syntax differs slightly for some looping and branching constructs.
+The compiler is quite Forth-like but not identical to Forth.  Some of the words have
+arguments in a different order and the syntax differs slightly for some looping and branching constructs.
 
 Closures (CREATE DOES>) are supported.
 
@@ -134,6 +134,10 @@ The main function (entry-point / root of GC) should install handlers (function p
 In turn, the system will invoke execution at those entry points when the events occur.  Because the main function
 references all of the various event-handler functions, those functions and their call graphs will
 be preserved through GC.
+
+bins2const.pl is a script which will take a GC'd/SAVE'd binary/data-file pair and print it out as C++
+source code that can be included with an embedded compilation - a temporary hack so that I can compile
+fith binaries into microcontroller projects without needing to transmit/load code yet.
 
 ## PLC Engine
 
