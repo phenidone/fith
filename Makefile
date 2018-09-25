@@ -1,6 +1,7 @@
 
 INCLUDES = fithi.h
-CPPFLAGS = -W -Wall -Wno-unused-parameter -Os -DNDEBUG
+CPPFLAGS = -W -Wall -Wno-unused-parameter -Os -DNDEBUG 
+# CPPFLAGS = -W -Wall -Wno-unused-parameter -DNDEBUG -g
 
 all: fithi fithe fithp
 

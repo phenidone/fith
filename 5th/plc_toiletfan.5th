@@ -33,62 +33,33 @@ VARIABLE STATE
 2 DEFINE FAN
 
 ( timing )
-1000    DEFINE PERIOD
+1000    DEFINE SLOWPERIOD
+100     DEFINE FASTPERIOD
 500     DEFINE LONGPRESS
-5 60 *  DEFINE FANTIMEOUT
-10 60 * DEFINE LIGHTTIMEOUT
+5 ( 60 * ) DEFINE FANTIMEOUT
+10 ( 60 * ) DEFINE LIGHTTIMEOUT
 
 ( set output bits )
 : WRITEOUT
   STATE OUTPORT GPIO_WRITE
 ;
 
-( on button down )
-: RISING
-  TIME_MSBOOT TO PRESSDOWN      ( remember when press started )
-  STATE LIGHT ^ DUP TO STATE    ( toggle light )
 
-  LIGHT & IF
-    TIME_EPOCH TO LIGHTON       ( remember when we turned it on/off )
-  ELSE
-    TIME_EPOCH TO LIGHTOFF
+: ONTIMER 
+  ( see if we're in a long press )
+  PREVINPUT BUTTON &
+  TIME_MSBOOT PRESSDOWN - LONGPRESS >
+  AND IF
+    STATE FAN | TO STATE
   ENDIF
 
-  WRITEOUT
-;
-
-( on button release )
-: FALLING
-  TIME_MSBOOT PRESSDOWN -       ( duration of press )
-  LONGPRESS > IF
-    STATE FAN | TO STATE        ( turn fan on )
-    WRITEOUT
-  ENDIF
-;
-
-( for GPIO change events )
-: ONCHANGE
-  INPORT GPIO_READ
-  DUP PREVINPUT ~ & BUTTON &    ( rising edge? )
-  IF
-    RISING
-  ENDIF
-  DUP ~ PREVINPUT & BUTTON &    ( falling edge? )
-  IF
-    FALLING
-  ENDIF
-  TO PREVINPUT          ( save input state )  
-;
-
-( timer event, check for timeouts)
-: ONTIMER
+  ( check for timeouts )
   STATE LIGHT & IF
     ( light is on, see if it needs to turn off )
     TIME_EPOCH LIGHTON - LIGHTTIMEOUT >
     IF
       TIME_EPOCH TO LIGHTOFF
       STATE LIGHT ^ TO STATE
-      WRITEOUT
     ENDIF
   ELSE
     STATE FAN & IF
@@ -96,18 +67,55 @@ VARIABLE STATE
       TIME_EPOCH LIGHTOFF - FANTIMEOUT >
       IF
         STATE FAN ^ TO STATE
-        WRITEOUT
       ENDIF
     ENDIF
   ENDIF
+
+  WRITEOUT
 ;
+
+( set new timer speed )
+( period -- )
+: SETTIMER
+  ' ONTIMER TIMER_PERIODIC DROP
+;
+
+( for GPIO change events )
+: ONCHANGE
+  INPORT GPIO_READ
+
+  ( rising edge? )
+  DUP PREVINPUT ~ & BUTTON &   
+  IF
+    TIME_MSBOOT TO PRESSDOWN      ( remember when press started )
+    STATE LIGHT ^ DUP TO STATE    ( toggle light )
+
+    LIGHT & IF
+      TIME_EPOCH TO LIGHTON       ( remember when we turned it on/off )
+    ELSE
+      TIME_EPOCH TO LIGHTOFF
+    ENDIF
+
+    WRITEOUT
+    ( faster timer events )
+    FASTPERIOD SETTIMER
+  ENDIF
+
+  ( falling edge? )
+  DUP ~ PREVINPUT & BUTTON &    
+  IF
+    ( slower timer events )
+    SLOWPERIOD SETTIMER
+  ENDIF
+  TO PREVINPUT          ( save input state )  
+;
+
 
 ( boot: initialise state and install event handlers )
 : MAIN
-  0 TO STATE                         ( clear outputs )
   WRITEOUT  
-  INPORT ' ONCHANGE GPIO_HANDLER     ( install GPIO-change handler )
-  PERIOD ' ONTIMER TIMER_PERIODIC    ( start timer )
+  INPORT ' ONCHANGE GPIO_HANDLER DROP   ( install GPIO-change handler )
+  SLOWPERIOD SETTIMER
 ;
 
 ( GC/save code to a binary )

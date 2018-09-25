@@ -471,6 +471,20 @@ VARIABLE _RSDEPTH
 
 
 ( ***************************************************
+  Boolean operations, which work with any non-zero value
+  being true, always return 1 for true.
+  *************************************************** )
+
+: AND
+  0 = SWAP 0 =
+  | NOT
+;
+: OR
+  0 = SWAP 0 =
+  & NOT
+;
+
+( ***************************************************
   Say we're done
   *************************************************** )
 

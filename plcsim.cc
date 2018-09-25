@@ -136,12 +136,20 @@ public:
             return 0;
         case SC3_TIMER_PERIODIC:
         {
+            periodic_handler=b;
+
             struct itimerval tv;
+            tv.it_value.tv_sec=0;
+            tv.it_value.tv_usec=0;
+            tv.it_interval=tv.it_value;
+
+            if(setitimer(ITIMER_REAL, &tv, NULL) < 0){
+                return -1;
+            }
             tv.it_value.tv_sec=a/1000;
             tv.it_value.tv_usec=(a % 1000)*1000;
             tv.it_interval=tv.it_value;
 
-            periodic_handler=b;
             if(setitimer(ITIMER_REAL, &tv, NULL) < 0){
                 periodic_handler=0;
                 return -1;
