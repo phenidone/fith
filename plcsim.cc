@@ -1,11 +1,13 @@
 /** -*- C++ -*- */
 
 #include "fithi.h"
+#include "fithfile.h"
 #include <cstdlib>
 #include <iostream>
 #include <iomanip>
 #include <fstream>
 #include <string>
+#include <sstream>
 #include <stdexcept>
 #include <sys/time.h>
 #include <sys/signal.h>
@@ -20,39 +22,6 @@ fith_cell bin[BINSZ];
 fith_cell heap[HEAPSZ];
 fith_cell dstk[STKSZ], cstk[STKSZ];
 size_t dsp=0, csp=0;
-
-/**
- * read a saved binary image, for which the first word is the
- * total number of words in the image.
- */
-void readblob(const string &fn, fith_cell *to, fith_cell alloc)
-{
-    ifstream ifs;
-    try{
-        ifs.open(fn.c_str(), ios::in | ios::binary);
-        if(!ifs){
-            throw runtime_error(string("can't open ")+fn);
-        }
-        ifs.read((char *) to, sizeof(fith_cell));
-        if(!ifs){
-            throw runtime_error(string("can't read ")+fn);
-        }
-        if(to[0] > alloc || to[0] < 0){
-            throw runtime_error(string("invalid length prefix in ")+fn);
-        }
-        ifs.read((char *) (to+1), (to[0]-1)*sizeof(fith_cell));
-        if(!ifs){
-            throw runtime_error(string("can't read ")+fn);
-        }
-        ifs.close();
-    }
-    catch(runtime_error &e){
-        if(ifs.is_open()){
-            ifs.close();
-        }
-    }
-}
-
 
 /**
  * Syscalls implementation that does PLC stuff.
@@ -278,6 +247,130 @@ void ontimer(int sig)
 }
 
 
+/**
+ * Callback-handler for loading a file
+ */
+class Loader : public FithInFile::SegmentHandler {
+public:
+
+    /// @param entname, optional name of the entry-point (obtain from map)
+    Loader(const string &entname)
+        : state(0), entry(0), entryname(entname)
+    {
+    }
+
+    /// file is opened, validate versions
+    virtual void onHeader(unsigned binver, unsigned iover)
+    {
+        state=0;
+        if(binver != Interpreter::BINVERSION){
+            throw runtime_error("Invalid BINVERSION");
+        }
+        if(iover != Interpreter::IOVERSION){
+            throw runtime_error("Invalid IOVERSION");
+        }
+    }
+
+    /// got a segmentx
+    virtual void onSegment(FithOutFile::SEGTYPES kind, fith_cell *pcell, unsigned count)
+    {
+        switch(kind){
+        case FithOutFile::SEG_TEXT:
+            loadText(pcell, count);
+            break;
+        case FithOutFile::SEG_BSS:
+            loadBss(pcell, count);
+            break;
+        case FithOutFile::SEG_ENTRY:
+            if(entryname.length() == 0 && count == 2){
+                // use the ENTRY segment only if user has not specified name of entry point
+                entry=pcell[0];
+                state |= GOT_ENTRY;
+            }
+            break;
+        case FithOutFile::SEG_MAP:
+            parseMap(pcell, count);
+            break;
+        default:
+            cerr << "Ignoring segment-type " << hex << kind << endl;
+        }
+    }
+
+    /// where do we run from?
+    fith_cell getEntry() const { return entry; }
+
+    /// load complete and valid?
+    bool success() const { return state == GOT_ALL; }
+    
+private:
+
+    void loadText(fith_cell *pcell, unsigned count)
+    {
+        if(count+1 > BINSZ){
+            throw runtime_error("loaded binary too large (TEXT)");
+        }
+        bin[0]=count;
+        memcpy(bin+1, pcell, (count-1)*4);
+
+        state |= GOT_TEXT;
+    }
+
+    void loadBss(fith_cell *pcell, unsigned count)
+    {
+        if(count+1 > HEAPSZ){
+            throw runtime_error("loaded binary too large (BSS)");
+        }
+        heap[0]=count;
+        memcpy(heap+1, pcell, (count-1)*4);
+
+        state |= GOT_BSS;
+    }
+
+    void parseMap(fith_cell *pcell, unsigned count)
+    {
+        // don't bother with map unless we need it
+        if(entryname.length() == 0){
+            return;
+        }
+
+        // don't want to include the header-size
+        --count;
+        
+        char *pstr=(char *) pcell;
+        if(pstr[count*4-1] != '\0'){
+            throw runtime_error("bad string termination in MAP segment");
+        }
+
+        // parse the map
+        istringstream iss(pstr);
+        while(!iss.eof()){
+            unsigned long addr;
+            string word;
+            iss >> hex >> addr >> word;
+
+            // cerr << word << "=" << addr << endl;
+            
+            // found the entry-point in the map
+            if(word == entryname){
+                entry=fith_cell(addr);
+                state |= GOT_ENTRY;
+                break;
+            }       
+        }
+    }
+
+    // bits in state, tracking load-progress
+    static const unsigned GOT_TEXT=1;
+    static const unsigned GOT_BSS=2;
+    static const unsigned GOT_ENTRY=4;
+    static const unsigned GOT_ALL=7;
+    
+    unsigned state;
+    fith_cell entry;
+    string entryname;
+};
+
+
 int main(int argc, char *argv[])
 {
     fith_cell entptr=-1;
@@ -285,38 +378,39 @@ int main(int argc, char *argv[])
 
     signal(SIGALRM, ontimer);
     
-    if(argc > 3 && strcmp(argv[1], "-r") == 0){
+    if(argc > 2 && strcmp(argv[1], "-r") == 0){
         string load=argv[2];
-        string entry=argv[3];
+        string entname;
+        if(argc > 3){
+            entname=argv[3];
+        }
 
+        ifstream ifs;
+        Loader loader(entname);
         try{
-            readblob(load+".bin", &bin[0], BINSZ);
-            readblob(load+".dat", &heap[0], HEAPSZ);            
-            ifstream ifs((load+".map").c_str(), ios::in);
-
-            // load the map
-            while(!ifs.eof()){
-                unsigned long addr;
-                string word;
-                ifs >> hex >> addr >> word;
-
-                // found the entry-point in the map
-                if(word == entry){
-                    entptr=fith_cell(addr);
-                }                
+            ifs.open(load.c_str(), ios::in);
+            if(!ifs){
+                throw runtime_error(string("Can't open ")+load);
             }
-            ifs.close();
-
-            if(entptr == -1){
-                throw runtime_error(string("Could not find entry point ")+entry);
-            }
-
-            bs=false;
+            FithInFile::readFile(ifs, loader);
         }
         catch(runtime_error &e){
             cerr << e.what() << endl;
             return 1;
         }
+        ifs.close();
+
+        if(loader.success()){
+            entptr=loader.getEntry();
+            bs=false;  // bootstrap not required as we have an entry point into valid binary
+        }
+        else{
+            cerr << "Loader(" << load << ") failed" << endl;
+            return 1;
+        }
+    }
+    else{
+        cerr << "No binary loaded" << endl;
     }
     
     // create bootstrapped interpreter

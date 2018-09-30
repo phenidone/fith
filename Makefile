@@ -14,7 +14,7 @@ fithi: fithf.o mainf.o fithfile.o crc.o
 fithe: fithi.o main.o fithfile.o crc.o
 	g++ -o $@ $+
 
-fithp: fithi.o plcsim.o
+fithp: fithi.o plcsim.o fithfile.o crc.o
 	g++ -o $@ $+
 
 mainf.o: main.cc $(INCLUDES)

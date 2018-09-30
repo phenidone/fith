@@ -141,8 +141,6 @@ fith binaries into microcontroller projects without needing to transmit/load cod
 
 ## Saved-Binary Format
 
-(work in progress)
-
 When saved to file, binaries have the following structure:
 - uint32 magic=0x48544946;   ("FITH")
 - uint32 fileversion=1;
@@ -163,12 +161,17 @@ The following values of segtype are admissible:
 - 0x110: CRC (CRC32-MPEG2 big-endian)
 - 0x111: signature (TBD)
 
-A saved binary must have exactly one segment of type TEXT, one segment of type BSS and one
-segment of type ENTRY, which contains the primary entry-point to the program.  MAP segments contain
-a textual map of the program's symbols.
+A saved binary must have exactly one segment of type TEXT, one segment of type BSS.  It may have one
+segment of type ENTRY, which contains the primary entry-point to the program, and/or one segment
+of type MAP which conains a textual map of the program's symbols.  A saved program should also have one
+segment of type CRC.
 
 CRC and Signature segments cover all file content (including the header) prior to the beginning
-of that segment.
+of that segment, but no part of that segment.
+
+The various version flags in the header are for compatibility-checking in future, allowing changes
+to the binary format (e.g. new instructions) or the IO subsystem (SYSCALLS supported).  The fileversion
+flag specifies the format, currently it must be 1.
 
 ## PLC Engine
 
@@ -188,11 +191,11 @@ FITH Bootstrap Complete
 SAVE success
 ************************
 context state = Halted
-IP = 824
+IP = 17
 D:
-R: 17
+R:
 ************************
-william@gytha:~/git/code/fith$ ./fithp -r fith MAIN
+william@gytha:~/git/code/fith$ ./fithp -r save.fith 
 IN 00000000000000000000000000000000 OUT 00000000000000000000000000000000
 IN 00000000000000000000000000000000 OUT 00000000000000000000000100000000
 IN 00000000000000000000000000000000 OUT 00000000000000000000001000000000
@@ -311,27 +314,39 @@ Here's what it looks like to compile a top-level function, call
 the GC on it and then load that saved binary into a new interpreter
 and run it:
 ```
-william@gytha:~/git/code/fith$ ./fithi 
+william@gytha:~/git/code/fith$ ./fithi
 FITH Bootstrap Complete
+INCLUDE 5th/example.5th
 : TEST 8 1 FOR I FACTORIAL . ROF CR ;
-: DOGC ' TEST GC ;
-DOGC
+[FUNCPTR] TEST GC
 warn: GC retains extended instruction EMIT in CR
 warn: GC retains extended instruction . in TEST
 SAVE success
 ************************
 context state = Halted
-IP = 851
+IP = 17
 D:
-R: 17
+R:
 ************************
-william@gytha:~/git/code/fith$ ./fithi -r fith TEST
+william@gytha:~/git/code/fith$ ./fithi -r save.fith
 1 2 6 24 120 720 5040 
-william@gytha:~/git/code/fith$ ll fith.*
--rw-rw-r-- 1 william william 204 Sep  3 23:16 fith.bin
--rw-rw-r-- 1 william william  80 Sep  3 23:16 fith.dat
--rw-rw-r-- 1 william william  59 Sep  3 23:16 fith.map
+```
 
+or without the GC, saving the whole interpreter state.  This requires that you
+specify the name of the entry-point on the command line; the first attempt to load and run
+the saved program fails because the entry-point is unknown.
+
+```
+william@gytha:~/git/code/fith$ ./fithi 
+FITH Bootstrap Complete
+: HELLO ." Hello World" CR ;
+SAVE
+SAVE success
+^D
+william@gytha:~/git/code/fith$ ./fithi -r save.fith
+Loader(save.fith) failed
+william@gytha:~/git/code/fith$ ./fithi -r save.fith HELLO
+Hello World
 ```
 
 ## License
