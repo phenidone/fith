@@ -139,6 +139,37 @@ bins2const.pl is a script which will take a GC'd/SAVE'd binary/data-file pair an
 source code that can be included with an embedded compilation - a temporary hack so that I can compile
 fith binaries into microcontroller projects without needing to transmit/load code yet.
 
+## Saved-Binary Format
+
+(work in progress)
+
+When saved to file, binaries have the following structure:
+- uint32 magic=0x48544946;   ("FITH")
+- uint32 fileversion=1;
+- uint32 binversion=1;
+- uint32 ioversion=1;
+- uint32 segcount=3+;
+- struct segment[segcount]
+  - uint32 segtype
+  - uint32 seglength
+  - uint32 data[seglength-1]
+
+The following values of segtype are admissible:
+- 0x101: TEXT (compiled program)
+- 0x102: BSS (memory initial content)
+- 0x103: CONFIG (persistent but mutable data)
+- 0x104: ENTRY (program entry point)
+- 0x105: MAP (textual listing of symbols)
+- 0x110: CRC (CRC32-MPEG2 big-endian)
+- 0x111: signature (TBD)
+
+A saved binary must have exactly one segment of type TEXT, one segment of type BSS and one
+segment of type ENTRY, which contains the primary entry-point to the program.  MAP segments contain
+a textual map of the program's symbols.
+
+CRC and Signature segments cover all file content (including the header) prior to the beginning
+of that segment.
+
 ## PLC Engine
 
 The PLC simulator (fithp) is a unix-based simulation of a trivial PLC with two GPIO ports (32 bits in, 32 bits out)

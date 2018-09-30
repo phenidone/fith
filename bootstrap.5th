@@ -476,11 +476,11 @@ VARIABLE _RSDEPTH
   *************************************************** )
 
 : AND
-  0 = SWAP 0 =
+  NOT SWAP NOT
   | NOT
 ;
 : OR
-  0 = SWAP 0 =
+  NOT SWAP NOT
   & NOT
 ;
 

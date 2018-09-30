@@ -25,7 +25,8 @@
  * @author william@brodie-tyrrell.org
  */
 
-
+#ifndef _FITHI_H_
+#define _FITHI_H_
 
 #include <cstring>
 #ifdef FULLFITH
@@ -162,6 +163,9 @@ public:
         MW_INTERP_COUNT        ///< number of machine-words defined
     };
 
+    // version numbers for saved binaries: compatibility check
+    static const unsigned BINVERSION=1;
+    static const unsigned IOVERSION=1;    
     
     /**
      * Context of execution of one thread.
@@ -426,9 +430,12 @@ private:
     std::string latestword;
     dict_t dictionary;
     bool compilestate;
+    fith_cell gcroot;
 #endif
 
 };
 
 
 }; // namespace fith
+
+#endif // _FITHI_H_

@@ -1,33 +1,33 @@
 
-INCLUDES = fithi.h
-CPPFLAGS = -W -Wall -Wno-unused-parameter -Os -DNDEBUG 
+INCLUDES = fithi.h fithfile.h crc.h
+CPPFLAGS = -W -Wall -Wno-unused-parameter -Os -DNDEBUG
 # CPPFLAGS = -W -Wall -Wno-unused-parameter -DNDEBUG -g
 
-all: fithi fithe fithp
+all: fithi fithe fithp crctest
 
-fithi: fithi.o maini.o
+crctest: crc.o crctest.o
 	g++ -o $@ $+
 
-fithe: fithe.o maine.o
+fithi: fithf.o mainf.o fithfile.o crc.o
 	g++ -o $@ $+
 
-fithp: fithe.o plcsim.o
+fithe: fithi.o main.o fithfile.o crc.o
 	g++ -o $@ $+
 
-maini.o: main.cc $(INCLUDES)
+fithp: fithi.o plcsim.o
+	g++ -o $@ $+
+
+mainf.o: main.cc $(INCLUDES)
 	g++ $(CPPFLAGS) -DFULLFITH -c -o $@ $<
 
-fithi.o: fithi.cc $(INCLUDES)
+fithf.o: fithi.cc $(INCLUDES)
 	g++ $(CPPFLAGS) -DFULLFITH -c -o $@ $<
 
-maine.o: main.cc $(INCLUDES)
-	g++ $(CPPFLAGS) -c -o $@ $<
-
-fithe.o: fithi.cc $(INCLUDES)
-	g++ $(CPPFLAGS) -c -o $@ $<
-
-plcsim.o: plcsim.cc $(INCLUDES)
+%.o: %.c $(INCLUDES)
 	g++ $(CPPFLAGS) -c -o $@ $<
 
 clean:
 	rm -f *.o
+
+clobber:
+	rm -f fithi fithe fithp crctest

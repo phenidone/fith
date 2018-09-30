@@ -26,6 +26,7 @@
 #include <stdexcept>
 #include <set>
 #include <cassert>
+#include "fithfile.h"
 #endif
 
 using namespace std;
@@ -205,6 +206,7 @@ Interpreter::Interpreter(fith_cell *_bin, size_t _binsz, fith_cell *_heap, size_
     
 #ifdef FULLFITH
     compilestate=false;
+    gcroot=0;
 
     // need to initialise?
     if(bs){
@@ -1580,42 +1582,31 @@ void Interpreter::Context::mw_save()
     
     ofstream ofs;
     try{
-        ofs.open("fith.map", ios::out | ios::trunc);
+        ofs.open("save.fith", ios::out | ios::trunc);
         if(!ofs){
-            throw runtime_error("open(\"fith.map\") failed");
+            throw runtime_error("open(\"save.fith\") failed");
         }
-        
-        ofs << hex;
+
+        // generate textual map
+        ostringstream oss;
+        oss << hex;
         for(dci i=interp.dictionary.begin();i!=interp.dictionary.end();++i){
             if((i->second & (FLAG_MACHINE | FLAG_HIDE)) == 0){
-                ofs << setw(8) << setfill('0') << i->second << setw(0) << " " << i->first << endl;
-                if(!ofs){
-                    throw runtime_error("write(\"fith.map\") failed");
-                }
+                oss << setw(8) << setfill('0') << i->second << setw(0) << " " << i->first << endl;
             }
         }
-        ofs.close();
+        string mapstr=oss.str();
 
-        ofs.open("fith.bin", ios::out | ios::trunc | ios::binary);
-        if(!ofs){
-            throw runtime_error("open(\"fith.bin\") failed");
+        // save the program
+        FithOutFile fof(ofs, interp.gcroot ? 5 : 4, BINVERSION, IOVERSION);
+        fof.writeText(interp.bin);
+        fof.writeData(interp.heap);
+        if(interp.gcroot){
+            // if we've GC'd, we know the entry point, so record it
+            fof.writeEntry(interp.gcroot);
         }
-
-        ofs.write((const char *) &interp.bin[0], HEREB*sizeof(fith_cell));
-        if(!ofs){
-            throw runtime_error("write(\"fith.bin\") failed");
-        }
-        ofs.close();
-
-        ofs.open("fith.dat", ios::out | ios::trunc | ios::binary);
-        if(!ofs){
-            throw runtime_error("open(\"fith.dat\") failed");
-        }
-
-        ofs.write((const char *) &interp.heap[0], HERED*sizeof(fith_cell));
-        if(!ofs){
-            throw runtime_error("write(\"fith.dat\") failed");
-        }
+        fof.writeMap(mapstr);
+        fof.writeCrc();
         ofs.close();
 
         *os << "SAVE success" << endl;
@@ -1676,7 +1667,8 @@ void Interpreter::Context::mw_gc()
     cset todo;
 
     // put root in the search-list
-    todo.insert(dstk[--dsp] & FLAG_ADDR);
+    interp.gcroot=dstk[--dsp] & FLAG_ADDR;
+    todo.insert(interp.gcroot);
 
     // simple mark/sweep collector
     while(!todo.empty()){
@@ -1735,6 +1727,9 @@ void Interpreter::Context::mw_gc()
         newhere+=len;
     }
 
+    // determine new entry-point
+    interp.gcroot=remap[interp.gcroot];
+    
     // allocate temporary buffer
     fith_cell *tmpbuf=new fith_cell[newhere];
     if(!tmpbuf){
