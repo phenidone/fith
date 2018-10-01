@@ -29,7 +29,7 @@ void FithOutFile::writeText(fith_cell *pcell)
 
 void FithOutFile::writeData(fith_cell *pcell)
 {
-    writeSegment(SEG_BSS, pcell+1, pcell[0]);
+    writeSegment(SEG_DATA, pcell+1, pcell[0]);
 }
 
 void FithOutFile::writeConfig(fith_cell *pcell)

@@ -35,7 +35,7 @@ public:
 
     enum SEGTYPES {
         SEG_TEXT=0x101,
-        SEG_BSS=0x102,
+        SEG_DATA=0x102,
         SEG_CONFIG=0x103,
         SEG_ENTRY=0x104,
         SEG_MAP=0x105,

@@ -122,7 +122,7 @@ public:
         case FithOutFile::SEG_TEXT:
             loadText(pcell, count);
             break;
-        case FithOutFile::SEG_BSS:
+        case FithOutFile::SEG_DATA:
             loadBss(pcell, count);
             break;
         case FithOutFile::SEG_ENTRY:
@@ -162,12 +162,12 @@ private:
     void loadBss(fith_cell *pcell, unsigned count)
     {
         if(count+1 > HEAPSZ){
-            throw runtime_error("loaded binary too large (BSS)");
+            throw runtime_error("loaded binary too large (DATA)");
         }
         heap[0]=count;
         memcpy(heap+1, pcell, (count-1)*4);
 
-        state |= GOT_BSS;
+        state |= GOT_DATA;
     }
 
     void parseMap(fith_cell *pcell, unsigned count)
@@ -205,7 +205,7 @@ private:
 
     // bits in state, tracking load-progress
     static const unsigned GOT_TEXT=1;
-    static const unsigned GOT_BSS=2;
+    static const unsigned GOT_DATA=2;
     static const unsigned GOT_ENTRY=4;
     static const unsigned GOT_ALL=7;
     

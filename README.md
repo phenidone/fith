@@ -20,7 +20,7 @@ PLCopen Structured Text would be better but due to its complexity, that will hav
 # How
 
 The system has two build modes: the full system including compiler, and a cut-down mode which
-has a number of risky opcodes disabled, designed to run some code in an embedded system.
+has a number of risky opcodes disabled, designed to run pre-compiled code in an embedded system.
 
 ## Interpreter
 
@@ -38,15 +38,15 @@ indexed by (bounds-checked) opcodes.
 
 In contrast to classic Forth where word-names are stored in the header of each word, Fith keeps
 a dictionary entirely outside the code space; it is accessible to the user code only via the CREATE, FIND,
-LATEST, IMMEDIATE and HIDDEN opcodes.  The code-space therefore contains only (virtual) code.
+LATEST, IMMEDIATE and HIDDEN opcodes.  The code-space therefore contains only byte-code.
 
 Unlike classic Forths, there is no native (x86, ARM, etc) machine code in the code space,
 nor is any machine code accessible
-to the Fith user-layer code.  The fith-machine should be entirely portable and purely virtual, i.e.
-it should be impossible to determine the nature of or interact with the underlying physical architecture
-from within this interpreted language.
+to or callable from the Fith user-layer code.  The fith-machine should be entirely portable and purely
+virtual, i.e. it should be impossible to determine the nature of or interact with the
+underlying physical architecture from within this interpreted language.
 
-Yes, this is slow.  That doesn't matter when we have a 32-bit microcontroller to turn a light or fan on/off
+Yes, this is pretty slow.  That doesn't matter when we have a 32-bit microcontroller to turn a light or fan on/off
 once every few minutes.
 
 ### Code Space
@@ -81,6 +81,9 @@ of cells.  Strings are represented on the stack as a pointer (offset into data s
 The stacks are arrays of 32-bit cells, for use while executing a thread.  Each thread gets its own
 Context, which contains a pair of stacks and stack-pointers.
 
+They can contain any scalar, data-offet or code-offset values. Stacks are therefore never persistent and
+not relocatable because it is not possible to tell the data type of each cell in a stack.
+
 ## Compiler
 
 In the full system (-DFULLFITH when compiling: fithi), all opcodes are enabled.  There is a bootstrap
@@ -93,7 +96,7 @@ arguments in a different order and the syntax differs slightly for some looping 
 
 Closures (CREATE DOES>) are supported.
 
-Locals are not currently supported.
+Locals are not currently supported by the compiler.
 
 ## Garbage Collection
 
@@ -104,12 +107,15 @@ Once a program has been compiled, a GC is provided which:
 - relocates all reachable functions into the minimum space
 - saves the code and data spaces to files, along with a map-file showing the result of the relocation
 
-Where a program is written for embedded use, it should not make any reference to the compiler and
+Where a program is written for embedded use, it will not make any reference to the compiler and
 therefore the GC will discard the majority of the code present in bootstrap.5th.
 
 Execution cannot continue after the GC has run because there is no guarantee that any functions on
 the return-stack will remain in code space, and the interpreter-loop itself (QUIT) is likely to have also
 been purged unless it was referenced by the entry-point.
+
+Once GC is completed, SAVE is called automatically, which saves the relocated program into a binary file
+along with its map and the chosen entry-point (the GC root).  The interpreter then exits.
 
 ## Embedded Runtime
 
@@ -130,14 +136,11 @@ new closures after that point due to the prohibition on modifying code.
 IO in embedded mode is to be performed using the SYSCALL opcodes.  An embedding of the interpreter must
 supply appropriate implementations that get/set the necessary state.
 
-The main function (entry-point / root of GC) should install handlers (function pointers) for various events relevant to that system.
-In turn, the system will invoke execution at those entry points when the events occur.  Because the main function
-references all of the various event-handler functions, those functions and their call graphs will
-be preserved through GC.
-
-bins2const.pl is a script which will take a GC'd/SAVE'd binary/data-file pair and print it out as C++
-source code that can be included with an embedded compilation - a temporary hack so that I can compile
-fith binaries into microcontroller projects without needing to transmit/load code yet.
+The main function (entry-point / root of GC) should install handlers (function pointers) for
+various events relevant to that system.  In turn, the system will invoke execution at those
+entry points when the events occur.  Because the main function references all of the various
+event-handler functions, those functions and their call graphs will be preserved through GC.  See
+5th/plctest.5th for an example where MAIN installs a GPIO-change handler and a timer handler.
 
 ## Saved-Binary Format
 
@@ -154,14 +157,14 @@ When saved to file, binaries have the following structure:
 
 The following values of segtype are admissible:
 - 0x101: TEXT (compiled program)
-- 0x102: BSS (memory initial content)
+- 0x102: DATA (memory initial content)
 - 0x103: CONFIG (persistent but mutable data)
 - 0x104: ENTRY (program entry point)
 - 0x105: MAP (textual listing of symbols)
 - 0x110: CRC (CRC32-MPEG2 big-endian)
 - 0x111: signature (TBD)
 
-A saved binary must have exactly one segment of type TEXT, one segment of type BSS.  It may have one
+A saved binary must have exactly one segment of type TEXT, one segment of type DATA.  It may have one
 segment of type ENTRY, which contains the primary entry-point to the program, and/or one segment
 of type MAP which conains a textual map of the program's symbols.  A saved program should also have one
 segment of type CRC.
@@ -182,27 +185,6 @@ and timer manipulations) available through the SYSCALL instructions.
 See plcsim.cc for the driver program, 5th/plc.5th for interface definitions and 5th/plctest.5th for
 a trivial demonstration that shows GPIO manipulations and the use of timer events.  While running it, press
 digit keys on the keyboard to toggle input pins.
-
-To compile and run the plctest demo:
-
-```
-william@gytha:~/git/code/fith$ ./fithi < 5th/plctest.5th
-FITH Bootstrap Complete
-SAVE success
-************************
-context state = Halted
-IP = 17
-D:
-R:
-************************
-william@gytha:~/git/code/fith$ ./fithp -r save.fith 
-IN 00000000000000000000000000000000 OUT 00000000000000000000000000000000
-IN 00000000000000000000000000000000 OUT 00000000000000000000000100000000
-IN 00000000000000000000000000000000 OUT 00000000000000000000001000000000
-IN 00000000000000000000000000000000 OUT 00000000000000000000001100000000
-IN 00000000000000000000000000000000 OUT 00000000000000000000010000000000
-^C
-```
 
 # Example Code
 
@@ -308,7 +290,7 @@ Use of closures to create functions for unit-conversion:
 
 ```
 
-## Example Session
+## Example Sessions & Invocation
 
 Here's what it looks like to compile a top-level function, call
 the GC on it and then load that saved binary into a new interpreter
@@ -332,7 +314,7 @@ william@gytha:~/git/code/fith$ ./fithi -r save.fith
 1 2 6 24 120 720 5040 
 ```
 
-or without the GC, saving the whole interpreter state.  This requires that you
+Again without the GC, saving the whole interpreter state.  This requires that you
 specify the name of the entry-point on the command line; the first attempt to load and run
 the saved program fails because the entry-point is unknown.
 
@@ -349,7 +331,28 @@ william@gytha:~/git/code/fith$ ./fithi -r save.fith HELLO
 Hello World
 ```
 
-## License
+To compile and run the plctest demo, noting that the last line in plctest.5th is a call to GC:
+
+```
+william@gytha:~/git/code/fith$ ./fithi < 5th/plctest.5th
+FITH Bootstrap Complete
+SAVE success
+************************
+context state = Halted
+IP = 17
+D:
+R:
+************************
+william@gytha:~/git/code/fith$ ./fithp -r save.fith 
+IN 00000000000000000000000000000000 OUT 00000000000000000000000000000000
+IN 00000000000000000000000000000000 OUT 00000000000000000000000100000000
+IN 00000000000000000000000000000000 OUT 00000000000000000000001000000000
+IN 00000000000000000000000000000000 OUT 00000000000000000000001100000000
+IN 00000000000000000000000000000000 OUT 00000000000000000000010000000000
+^C
+```
+
+# License
 
 (C) 2018 W. Brodie-Tyrrell
 Licensed under GPL v3
